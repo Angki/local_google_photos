@@ -1,15 +1,13 @@
 # ==============================================================================
 # File: backend/main.py
 # Description: Main entry point for the FastAPI application. Serves the Google
-#              Photos clone web UI, handles WebSocket lifecycle, and initializes
-#              the database on startup.
-#
-# CHANGELOG:
-# 2026-09-05 - Initial creation: Configured CORS, static files serving,
-#              startup event hooks, and auto-indexing trigger for new databases.
+#              Photos clone web UI, handles WebSocket lifecycle, lifespan hooks,
+#              health probes, and initializes database migrations.
 # ==============================================================================
 
 import asyncio
+from contextlib import asynccontextmanager
+import json
 import logging
 from pathlib import Path
 from fastapi import FastAPI
@@ -18,7 +16,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import APP_ROOT, SOURCE_DATA_DIR
-from backend.database import get_library_stats, init_db
+from backend.database import get_db_connection, get_library_stats, init_db
 from backend.routes import api_router, scanner
 import backend.routes as routes_module
 
@@ -30,40 +28,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GooglePhotosApp")
 
-# Create FastAPI instance
-app = FastAPI(
-    title="Google Photos Local Takeout Archive",
-    description="Local AI-powered photo management application for Google Takeout (2013-2026)",
-    version="1.0.0",
-)
 
-# Enable CORS for local development flexibility
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Register API & WebSocket routes
-app.include_router(api_router)
-
-# Prevent browser from aggressively caching HTML, CSS, and JS during local development
-@app.middleware("http")
-async def add_no_cache_headers(request, call_next):
-    response = await call_next(request)
-    path = request.url.path
-    if path.endswith(".css") or path.endswith(".js") or path == "/" or path.endswith(".html"):
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-    return response
-
-
-@app.on_event("startup")
-async def on_startup():
-    """Application initialization on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Modern lifespan context manager replacing deprecated startup/shutdown events."""
     logger.info("Initializing Google Photos Local application...")
     init_db()
 
@@ -85,6 +53,78 @@ async def on_startup():
     else:
         logger.info(f"Database ready with {total_photos} photos and videos.")
 
+    yield
+    logger.info("Shutting down Google Photos Local application...")
+
+
+# Create FastAPI instance
+app = FastAPI(
+    title="Google Photos Local Takeout Archive",
+    description="Enterprise-grade local photo management system indexing Google Takeout archives",
+    version="1.1.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Security and cache-control middleware
+@app.middleware("http")
+async def add_security_and_cache_headers(request, call_next):
+    response = await call_next(request)
+    # Enterprise security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Dynamic cache control for frontend development assets
+    path = request.url.path
+    if path.endswith(".css") or path.endswith(".js") or path == "/" or path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+# Register Health Probes
+@app.get("/healthz", tags=["System"], summary="Liveness Probe")
+def liveness_check():
+    """Liveness probe indicating whether the server process is alive and responsive."""
+    return {"status": "healthy", "service": "google-photos-local", "version": "1.1.0"}
+
+
+@app.get("/readyz", tags=["System"], summary="Readiness Probe")
+def readiness_check():
+    """Readiness probe verifying database connectivity and storage directory status."""
+    try:
+        with get_db_connection() as conn:
+            conn.execute("SELECT 1;").fetchone()
+        return {
+            "status": "ready",
+            "database": "connected",
+            "source_dir_exists": SOURCE_DATA_DIR.is_dir(),
+        }
+    except Exception as e:
+        return Response(
+            content=json.dumps({"status": "unavailable", "error": str(e)}),
+            status_code=503,
+            media_type="application/json",
+        )
+
+
+# Register API & WebSocket routes
+app.include_router(api_router)
+
+# Mount frontend static directory
+FRONTEND_DIR = APP_ROOT / "frontend"
 
 # Favicon handling to prevent 404
 @app.get("/favicon.ico", include_in_schema=False)
@@ -95,7 +135,5 @@ def get_favicon():
     return Response(status_code=204)
 
 
-# Mount frontend static directory
-FRONTEND_DIR = APP_ROOT / "frontend"
 if FRONTEND_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

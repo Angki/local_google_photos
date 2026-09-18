@@ -2,12 +2,7 @@
 # File: backend/routes.py
 # Description: FastAPI REST API routes and WebSocket handlers for timeline,
 #              photo streaming, HTTP Range video playback, semantic search,
-#              and background worker management.
-#
-# CHANGELOG:
-# 2026-09-05 - Initial creation: Added timeline endpoints, high-speed thumbnail
-#              streaming, Range header support for video seeking, CLIP semantic
-#              vector search, and WebSocket real-time progress broadcasts.
+#              and background worker management with strict Pydantic models.
 # ==============================================================================
 
 import asyncio
@@ -15,9 +10,9 @@ import json
 import mimetypes
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
@@ -50,7 +45,130 @@ from backend.thumbnail_manager import generate_thumbnail
 
 api_router = APIRouter()
 
-# Global WebSocket connection manager
+
+# ==============================================================================
+# Pydantic Request & Response Schemas (Enterprise OpenAPI Contracts)
+# ==============================================================================
+
+class DeletePhotosRequest(BaseModel):
+    photo_ids: List[int] = Field(..., description="List of photo IDs to delete")
+    delete_from_disk: bool = Field(False, description="If true, permanently wipes file from disk")
+
+
+class RestorePhotosRequest(BaseModel):
+    photo_ids: List[int] = Field(..., description="List of photo IDs to restore")
+
+
+class CreateAlbumRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128, description="Album name")
+
+
+class AddPhotosToAlbumRequest(BaseModel):
+    photo_ids: List[int] = Field(..., description="List of photo IDs to add to the album")
+
+
+class TimelineMonthItem(BaseModel):
+    month: int
+    name: str
+    count: int
+
+
+class TimelineYearItem(BaseModel):
+    year: int
+    total: int
+    months: List[TimelineMonthItem]
+
+
+class TimelineResponse(BaseModel):
+    timeline: List[TimelineYearItem]
+
+
+class PhotoListResponse(BaseModel):
+    photos: List[Dict[str, Any]]
+    count: int
+    offset: int
+    limit: int
+
+
+class TrashListResponse(BaseModel):
+    photos: List[Dict[str, Any]]
+    count: int
+    total: int
+    limit: int
+    offset: int
+
+
+class TrashCountResponse(BaseModel):
+    total: int
+
+
+class DeleteActionResponse(BaseModel):
+    success: bool
+    deleted_count: int
+    photo_ids: Optional[List[int]] = None
+    delete_from_disk: Optional[bool] = False
+    media_files_deleted: Optional[int] = None
+    json_files_deleted: Optional[int] = None
+    thumbnails_deleted: Optional[int] = None
+    message: Optional[str] = None
+
+
+class RestoreActionResponse(BaseModel):
+    success: bool
+    restored_count: int
+    photo_ids: List[int]
+
+
+class GeoPointsResponse(BaseModel):
+    count: int
+    points: List[Dict[str, Any]]
+
+
+class AlbumCreateResponse(BaseModel):
+    success: bool
+    album_id: int
+
+
+class AlbumMutationResponse(BaseModel):
+    success: bool
+    added_count: Optional[int] = None
+    removed_count: Optional[int] = None
+
+
+class AlbumPhotosResponse(BaseModel):
+    album_id: int
+    photos: List[Dict[str, Any]]
+
+
+class SimpleSuccessResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+
+
+class SearchResponse(BaseModel):
+    mode: str
+    query: str
+    count: int
+    photos: List[Dict[str, Any]]
+
+
+class StatsResponse(BaseModel):
+    stats: Dict[str, Any]
+
+
+class CategoriesResponse(BaseModel):
+    categories: Dict[str, int]
+
+
+class ScanControlResponse(BaseModel):
+    success: bool
+    status: Dict[str, Any]
+
+
+# ==============================================================================
+# Global WebSocket Connection Manager
+# ==============================================================================
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -90,9 +208,10 @@ def broadcast_progress(status_data: dict):
 scanner = LibraryScanner(broadcast_callback=broadcast_progress)
 
 
-# --------------------------------------------------------------------------
-# WebSocket Endpoint
-# --------------------------------------------------------------------------
+# ==============================================================================
+# WebSocket & Scanner Status Endpoints
+# ==============================================================================
+
 @api_router.websocket("/ws/status")
 async def websocket_status(websocket: WebSocket):
     await ws_manager.connect(websocket)
@@ -108,22 +227,23 @@ async def websocket_status(websocket: WebSocket):
         ws_manager.disconnect(websocket)
 
 
-@api_router.get("/ws/status")
-def get_ws_status_http():
+@api_router.get("/ws/status", tags=["Scanner"], summary="Scanner Status (HTTP Fallback)")
+def get_ws_status_http() -> Dict[str, Any]:
     """Fallback HTTP endpoint for scanner status if WebSocket is unavailable or queried via HTTP."""
     return scanner.get_status()
 
 
-# --------------------------------------------------------------------------
+# ==============================================================================
 # Timeline & Photos Endpoints
-# --------------------------------------------------------------------------
-@api_router.get("/api/timeline")
+# ==============================================================================
+
+@api_router.get("/api/timeline", response_model=TimelineResponse, tags=["Timeline"], summary="Timeline Hierarchy")
 def get_timeline():
     """Returns Year -> Month timeline tree with photo counts."""
     return {"timeline": get_timeline_hierarchy()}
 
 
-@api_router.get("/api/photos")
+@api_router.get("/api/photos", response_model=PhotoListResponse, tags=["Photos"], summary="List Photos")
 def list_photos(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
@@ -148,18 +268,7 @@ def list_photos(
     return {"photos": photos, "count": len(photos), "offset": offset, "limit": limit}
 
 
-# --- Photos Trash, Soft-Delete & Restore Routes ---
-
-class DeletePhotosRequest(BaseModel):
-    photo_ids: List[int]
-    delete_from_disk: bool = False
-
-
-class RestorePhotosRequest(BaseModel):
-    photo_ids: List[int]
-
-
-@api_router.get("/api/photos/trash")
+@api_router.get("/api/photos/trash", response_model=TrashListResponse, tags=["Trash"], summary="List Trash Photos")
 def api_get_trash(limit: int = Query(120, ge=1, le=500), offset: int = Query(0, ge=0)):
     """Fetches photos in the Trash along with total trash count."""
     photos = get_deleted_photos(limit=limit, offset=offset)
@@ -167,35 +276,35 @@ def api_get_trash(limit: int = Query(120, ge=1, le=500), offset: int = Query(0, 
     return {"photos": photos, "count": len(photos), "total": total, "limit": limit, "offset": offset}
 
 
-@api_router.get("/api/photos/trash/count")
+@api_router.get("/api/photos/trash/count", response_model=TrashCountResponse, tags=["Trash"], summary="Trash Total Count")
 def api_get_trash_count():
     """Returns the total number of items currently in the Trash."""
     return {"total": get_trash_count()}
 
 
-@api_router.post("/api/photos/delete")
+@api_router.post("/api/photos/delete", response_model=DeleteActionResponse, tags=["Trash"], summary="Delete Photos")
 def api_delete_photos(req: DeletePhotosRequest):
-    """Moves photos to Trash (soft delete). Default behavior."""
+    """Moves photos to Trash (soft delete) or deletes from disk if requested."""
     if req.delete_from_disk:
         return delete_photos_from_disk_and_db(req.photo_ids)
     count = delete_photos(req.photo_ids)
     return {"success": True, "deleted_count": count, "photo_ids": req.photo_ids, "delete_from_disk": False}
 
 
-@api_router.post("/api/photos/restore")
+@api_router.post("/api/photos/restore", response_model=RestoreActionResponse, tags=["Trash"], summary="Restore Photos")
 def api_restore_photos(req: RestorePhotosRequest):
     """Restores soft-deleted photos back to the active library."""
     count = restore_photos(req.photo_ids)
     return {"success": True, "restored_count": count, "photo_ids": req.photo_ids}
 
 
-@api_router.post("/api/photos/delete-permanent")
+@api_router.post("/api/photos/delete-permanent", response_model=DeleteActionResponse, tags=["Trash"], summary="Permanently Purge Photos")
 def api_permanent_delete_photos(req: DeletePhotosRequest):
     """Permanently deletes photos from disk (media file, companion JSON, thumbnail) and database."""
     return delete_photos_from_disk_and_db(req.photo_ids)
 
 
-@api_router.post("/api/photos/trash/empty")
+@api_router.post("/api/photos/trash/empty", response_model=DeleteActionResponse, tags=["Trash"], summary="Empty Entire Trash")
 def api_empty_trash():
     """Permanently deletes all items currently in Trash from disk and database."""
     with get_db_connection() as conn:
@@ -208,7 +317,7 @@ def api_empty_trash():
     return delete_photos_from_disk_and_db(photo_ids)
 
 
-@api_router.get("/api/photos/{photo_id}")
+@api_router.get("/api/photos/{photo_id}", tags=["Photos"], summary="Get Photo Detail")
 def get_photo_detail(photo_id: int):
     """Returns single photo with full metadata."""
     photo = get_photo_by_id(photo_id)
@@ -217,13 +326,12 @@ def get_photo_detail(photo_id: int):
     return photo
 
 
-# --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
+# ==============================================================================
 # Thumbnail & Media Streaming (with HTTP Range for smooth video seeking)
-# --------------------------------------------------------------------------
+# ==============================================================================
 _video_batch_running = False
 
-@api_router.get("/api/thumbnails/{photo_id}")
+@api_router.get("/api/thumbnails/{photo_id}", tags=["Media"], summary="Get WebP Thumbnail")
 def get_thumbnail(photo_id: int, force: bool = Query(False)):
     """Serves high-performance cached WebP thumbnail."""
     photo = get_photo_by_id(photo_id)
@@ -258,7 +366,7 @@ def get_thumbnail(photo_id: int, force: bool = Query(False)):
     raise HTTPException(status_code=404, detail="Thumbnail not available")
 
 
-@api_router.post("/api/videos/generate-thumbnails")
+@api_router.post("/api/videos/generate-thumbnails", tags=["Media"], summary="Batch Video Thumbnails")
 def api_generate_video_thumbnails():
     """Triggers background extraction of real video frame thumbnails for all videos."""
     global _video_batch_running
@@ -279,13 +387,13 @@ def api_generate_video_thumbnails():
     return {"status": "started", "message": "Video thumbnail extraction started in background"}
 
 
-@api_router.get("/api/videos/generate-thumbnails/status")
+@api_router.get("/api/videos/generate-thumbnails/status", tags=["Media"], summary="Video Batch Status")
 def api_get_video_thumbnails_status():
     global _video_batch_running
     return {"running": _video_batch_running}
 
 
-@api_router.get("/api/media/{photo_id}")
+@api_router.get("/api/media/{photo_id}", tags=["Media"], summary="Stream Media File")
 async def get_media(photo_id: int, request: Request):
     """
     Streams original image or video file.
@@ -299,13 +407,14 @@ async def get_media(photo_id: int, request: Request):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Original media file not found on disk")
 
-    file_size = file_path.stat().st_size
     mime_type, _ = mimetypes.guess_type(str(file_path))
     if not mime_type:
         mime_type = "video/mp4" if photo.get("media_type") == "video" else "image/jpeg"
 
-    # Support HTTP Range requests for video seeking
-    range_header = request.headers.get("range")
+    # Handle HTTP Range requests for video seeking
+    range_header = request.headers.get("Range")
+    file_size = file_path.stat().st_size
+
     if range_header and photo.get("media_type") == "video":
         byte1, byte2 = 0, None
         match = range_header.replace("bytes=", "").split("-")
@@ -314,9 +423,11 @@ async def get_media(photo_id: int, request: Request):
         if len(match) > 1 and match[1]:
             byte2 = int(match[1])
 
-        chunk_size = 1024 * 1024  # 1MB chunk
-        length = file_size - byte1 if byte2 is None else byte2 - byte1 + 1
-        if length > chunk_size and byte2 is None:
+        chunk_size = 1024 * 1024 * 2  # 2MB chunks
+        length = file_size - byte1
+        if byte2 is not None:
+            length = byte2 - byte1 + 1
+        elif length > chunk_size:
             length = chunk_size
         end = byte1 + length - 1
 
@@ -340,10 +451,11 @@ async def get_media(photo_id: int, request: Request):
     )
 
 
-# --------------------------------------------------------------------------
+# ==============================================================================
 # AI Semantic Search & Categories
-# --------------------------------------------------------------------------
-@api_router.get("/api/search")
+# ==============================================================================
+
+@api_router.get("/api/search", response_model=SearchResponse, tags=["Search & AI"], summary="Semantic Search")
 def search_photos(
     q: str = Query(..., min_length=1),
     limit: int = Query(80, ge=1, le=200),
@@ -360,14 +472,12 @@ def search_photos(
         if len(photo_ids) > 0 and matrix.shape[0] > 0:
             # Cosine similarity (both vectors are L2-normalized)
             scores = np.dot(matrix, query_vec)
-            # Filter matches with similarity > 0.18
             ranked_indices = np.argsort(scores)[::-1]
             matched_ids = [
                 photo_ids[i] for i in ranked_indices[:limit] if scores[i] > 0.18
             ]
             if matched_ids:
                 results = get_photos(photo_ids=matched_ids, limit=limit)
-                # Preserve rank order
                 id_to_photo = {p["id"]: p for p in results}
                 ordered_results = [id_to_photo[pid] for pid in matched_ids if pid in id_to_photo]
                 return {
@@ -387,89 +497,91 @@ def search_photos(
     }
 
 
-@api_router.get("/api/categories")
+@api_router.get("/api/categories", response_model=CategoriesResponse, tags=["Search & AI"], summary="AI Categories")
 def get_categories():
     """Returns detected AI categories and photo counts."""
     counts = get_category_counts()
     return {"categories": counts}
 
 
-@api_router.get("/api/stats")
+@api_router.get("/api/stats", response_model=StatsResponse, tags=["System"], summary="Library Stats")
 def get_stats():
     """Returns general library statistics."""
     stats = get_library_stats()
     return {"stats": stats}
 
 
-# --------------------------------------------------------------------------
+# ==============================================================================
 # Scanner Control Endpoints
-# --------------------------------------------------------------------------
-@api_router.post("/api/scan/start")
+# ==============================================================================
+
+@api_router.post("/api/scan/start", response_model=ScanControlResponse, tags=["Scanner"], summary="Start Scanner")
 def start_scan():
     """Triggers background library scan."""
     started = scanner.start()
     return {"success": started, "status": scanner.get_status()}
 
 
-@api_router.post("/api/scan/pause")
+@api_router.post("/api/scan/pause", response_model=ScanControlResponse, tags=["Scanner"], summary="Pause Scanner")
 def pause_scan():
     """Pauses background scanner."""
     scanner.pause()
     return {"success": True, "status": scanner.get_status()}
 
 
-@api_router.post("/api/scan/resume")
+@api_router.post("/api/scan/resume", response_model=ScanControlResponse, tags=["Scanner"], summary="Resume Scanner")
 def resume_scan():
     """Resumes paused background scanner."""
     scanner.resume()
     return {"success": True, "status": scanner.get_status()}
 
 
-@api_router.get("/api/scan/status")
-def scan_status():
+@api_router.get("/api/scan/status", tags=["Scanner"], summary="Scan Status")
+def scan_status() -> Dict[str, Any]:
     """Returns current scanner status."""
     return scanner.get_status()
 
 
-# --- Geolocation Points Route ---
+# ==============================================================================
+# Geolocation Points Route
+# ==============================================================================
 
-@api_router.get("/api/geo/points")
+@api_router.get("/api/geo/points", response_model=GeoPointsResponse, tags=["Geolocation"], summary="Photo Map Points")
 def api_get_geo_points():
     """Returns list of lightweight coordinates and metadata for all active geotagged photos."""
     points = get_geo_points()
     return {"count": len(points), "points": points}
 
 
-# --- Albums Routes ---
+# ==============================================================================
+# Albums Routes
+# ==============================================================================
 
-class CreateAlbumRequest(BaseModel):
-    name: str
-
-class AddPhotosToAlbumRequest(BaseModel):
-    photo_ids: List[int]
-
-@api_router.get("/api/albums")
+@api_router.get("/api/albums", response_model=List[Dict[str, Any]], tags=["Albums"], summary="List Albums")
 def api_get_albums():
     """Fetches all albums."""
     return get_albums()
 
-@api_router.post("/api/albums")
+
+@api_router.post("/api/albums", response_model=AlbumCreateResponse, tags=["Albums"], summary="Create Album")
 def api_create_album(req: CreateAlbumRequest):
     """Creates a new album or returns existing album ID."""
     if not req.name or not req.name.strip():
         raise HTTPException(status_code=400, detail="Album name required")
-    album_id = create_album(req.name)
+    album_id = create_album(req.name.strip())
     if not album_id:
         raise HTTPException(status_code=400, detail="Unable to create album")
     return {"success": True, "album_id": album_id}
 
-@api_router.post("/api/albums/{album_id}/photos")
+
+@api_router.post("/api/albums/{album_id}/photos", response_model=AlbumMutationResponse, tags=["Albums"], summary="Add Photos to Album")
 def api_add_photos_to_album(album_id: int, req: AddPhotosToAlbumRequest):
     """Adds selected photos to an album."""
     count = add_photos_to_album(album_id, req.photo_ids)
     return {"success": True, "added_count": count}
 
-@api_router.get("/api/albums/{album_id}/photos")
+
+@api_router.get("/api/albums/{album_id}/photos", response_model=AlbumPhotosResponse, tags=["Albums"], summary="Get Album Photos")
 def api_get_album_photos(
     album_id: int,
     limit: int = Query(200, ge=1, le=2000),
@@ -479,13 +591,15 @@ def api_get_album_photos(
     photos = get_photos(album_id=album_id, limit=limit, offset=offset)
     return {"album_id": album_id, "photos": photos}
 
-@api_router.delete("/api/albums/{album_id}/photos")
+
+@api_router.delete("/api/albums/{album_id}/photos", response_model=AlbumMutationResponse, tags=["Albums"], summary="Remove Photos from Album")
 def api_remove_photos_from_album(album_id: int, req: DeletePhotosRequest):
     """Removes selected photos from an album."""
     count = remove_photos_from_album(album_id, req.photo_ids)
     return {"success": True, "removed_count": count}
 
-@api_router.delete("/api/albums/{album_id}")
+
+@api_router.delete("/api/albums/{album_id}", response_model=SimpleSuccessResponse, tags=["Albums"], summary="Delete Album")
 def api_delete_album(album_id: int):
     """Deletes an entire album (does not delete the original photos)."""
     success = delete_album(album_id)

@@ -1,5 +1,6 @@
 # Google Photos Local Takeout Gallery 📸
 
+[![CI Test & Quality Suite](https://github.com/Angki/local_google_photos/actions/workflows/ci.yml/badge.svg)](https://github.com/Angki/local_google_photos/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.103+-009688.svg)](https://fastapi.tiangolo.com)
 [![PyTorch CLIP](https://img.shields.io/badge/AI-OpenAI%20CLIP%20ViT--B%2F32-EE4C2C.svg)](https://github.com/openai/CLIP)
@@ -203,6 +204,8 @@ options:
 
 | Method | Endpoint | Description |
 |---|---|---|
+| `GET` | `/healthz` | Liveness probe indicating server health |
+| `GET` | `/readyz` | Readiness probe checking database connectivity and storage status |
 | `GET` | `/api/photos` | Paginated timeline photos (`limit`, `offset`, `category`, `year`, `month`) |
 | `GET` | `/api/photos/hierarchy` | Year and month distribution for the timeline scrubber |
 | `GET` | `/api/photos/{photo_id}` | Detailed metadata, tags, GPS coordinates, and companion info |
@@ -278,10 +281,17 @@ local_google_photos/
 ---
 
 ## 🛡️ Privacy & Security
-
+ 
 - **Zero Cloud Leakage**: This tool never uploads your photos, thumbnails, metadata, or AI embeddings to any external server.
 - **Local AI Execution**: OpenAI CLIP runs locally on your own hardware via PyTorch.
 - **Strict Git Rules**: The repository's `.gitignore` guarantees that your SQLite database (`photos.db`), thumbnails (`data/thumbnails/`), and personal files will never be tracked or pushed to Git.
+- See our [Security Policy](SECURITY.md) for vulnerability disclosure details.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting Pull Requests.
 
 ---
 

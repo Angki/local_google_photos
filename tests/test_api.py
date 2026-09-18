@@ -1,10 +1,23 @@
+# ==============================================================================
+# File: tests/test_api.py
+# Description: Enterprise-grade automated test suite for Google Photos Local App.
+#              Tests API contracts, OpenAPI schema, health probes, migrations,
+#              lifecycle endpoints, and AI search with isolated mocking.
+# ==============================================================================
+
+import asyncio
 import unittest
+from unittest.mock import MagicMock, patch
+import httpx
+import numpy as np
+
 from backend.config import is_target_folder
 from backend.database import (
     add_photos_to_album,
     create_album,
     delete_photos,
     get_albums,
+    get_db_connection,
     get_deleted_photos,
     get_library_stats,
     get_photo_by_id,
@@ -13,12 +26,22 @@ from backend.database import (
     init_db,
     restore_photos,
 )
+from backend.main import app
 
 
 class TestGooglePhotosTakeout(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        """Initializes database and verifies schema migrations."""
         init_db()
+
+    def test_database_schema_migrations(self):
+        """Verifies that schema_migrations table tracks versions properly."""
+        with get_db_connection() as conn:
+            rows = conn.execute("SELECT version, description FROM schema_migrations ORDER BY version ASC;").fetchall()
+            versions = [r["version"] for r in rows]
+            self.assertIn(1, versions)
+            self.assertIn(2, versions)
 
     def test_target_folder_filtering(self):
         """Tests that years 2013-2026 and Takeout albums are accepted, and system folders are rejected."""
@@ -41,6 +64,48 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         self.assertFalse(is_target_folder(".venv"))
         self.assertFalse(is_target_folder(".git"))
         self.assertFalse(is_target_folder("thumbnails"))
+
+    def test_openapi_schema_generation(self):
+        """Verifies that the OpenAPI/Swagger documentation schema compiles cleanly."""
+        schema = app.openapi()
+        self.assertIsInstance(schema, dict)
+        self.assertEqual(schema["info"]["title"], "Google Photos Local Takeout Archive")
+        self.assertIn("/healthz", schema["paths"])
+        self.assertIn("/readyz", schema["paths"])
+        self.assertIn("/api/photos", schema["paths"])
+        self.assertIn("/api/search", schema["paths"])
+
+    def test_healthz_liveness_probe(self):
+        """Tests the /healthz liveness endpoint via ASGI client."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/healthz")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertEqual(data["status"], "healthy")
+                self.assertEqual(data["service"], "google-photos-local")
+        asyncio.run(_run())
+
+    def test_readyz_readiness_probe(self):
+        """Tests the /readyz readiness endpoint via ASGI client."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/readyz")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertEqual(data["status"], "ready")
+                self.assertEqual(data["database"], "connected")
+        asyncio.run(_run())
+
+    def test_security_headers_middleware(self):
+        """Verifies enterprise security headers on responses."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/healthz")
+                self.assertEqual(resp.headers.get("x-content-type-options"), "nosniff")
+                self.assertEqual(resp.headers.get("x-frame-options"), "SAMEORIGIN")
+                self.assertEqual(resp.headers.get("referrer-policy"), "strict-origin-when-cross-origin")
+        asyncio.run(_run())
 
     def test_timeline_hierarchy(self):
         """Verifies timeline hierarchy returns structured year and month counts."""
@@ -99,10 +164,9 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         if not photos:
             self.skipTest("No photos in database.")
 
-        album_name = "Test Unit Album"
+        album_name = "Enterprise Test Album"
         album_id = create_album(album_name)
         if album_id is None:
-            # Already exists from previous run, find it
             all_albums = get_albums()
             for a in all_albums:
                 if a["name"] == album_name:
@@ -118,8 +182,28 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         self.assertTrue(len(matching) > 0)
         self.assertGreaterEqual(matching[0]["photo_count"], len(p_ids))
 
+    def test_ai_semantic_search_mocked(self):
+        """Tests semantic search ranking with mocked CLIP model without downloading weights."""
+        from backend.routes import search_photos
+
+        # Create mock 512-dim normalized query vector
+        dummy_query_vec = np.ones(512, dtype=np.float32)
+        dummy_query_vec /= np.linalg.norm(dummy_query_vec)
+
+        # Create mock embeddings matrix for 2 photos
+        dummy_matrix = np.vstack([dummy_query_vec, -dummy_query_vec])
+        photo_ids = [101, 102]
+
+        with patch("backend.routes.ai_engine.encode_text_query", return_value=dummy_query_vec), \
+             patch("backend.routes.get_all_embeddings", return_value=(photo_ids, dummy_matrix)), \
+             patch("backend.routes.get_photos", return_value=[{"id": 101, "filename": "beach.jpg"}]):
+            res = search_photos(q="beach sunset", limit=10)
+            self.assertEqual(res["mode"], "semantic")
+            self.assertEqual(res["count"], 1)
+            self.assertEqual(res["photos"][0]["id"], 101)
+
     def test_routes_api(self):
-        """Tests REST API handler functions directly."""
+        """Tests REST API handler functions directly with Pydantic schemas."""
         from backend.routes import (
             DeletePhotosRequest,
             RestorePhotosRequest,

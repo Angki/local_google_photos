@@ -39,10 +39,10 @@ def get_db_connection():
         conn.close()
 
 
-def init_db() -> None:
-    """Creates database tables and indexes if they do not exist."""
-    with get_db_connection() as conn:
-        conn.executescript("""
+# Database Schema Migrations List
+MIGRATIONS = [
+    (1, "Core schema: photos, photo_embeddings, albums, and album_photos", [
+        """
         CREATE TABLE IF NOT EXISTS photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_path TEXT UNIQUE NOT NULL,
@@ -72,44 +72,80 @@ def init_db() -> None:
             ai_tags TEXT,
             ai_processed BOOLEAN DEFAULT 0,
             thumbnail_path TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            deleted BOOLEAN DEFAULT 0
         );
-
-        CREATE INDEX IF NOT EXISTS idx_photos_taken_at ON photos(taken_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_photos_timeline ON photos(taken_year DESC, taken_month DESC, taken_at DESC);
-        CREATE INDEX IF NOT EXISTS idx_photos_category ON photos(ai_category);
-        CREATE INDEX IF NOT EXISTS idx_photos_media_type ON photos(media_type);
-        CREATE INDEX IF NOT EXISTS idx_photos_ai_processed ON photos(ai_processed);
-        CREATE INDEX IF NOT EXISTS idx_photos_geo ON photos(has_geo, deleted, latitude, longitude);
-
+        """,
+        """
         CREATE TABLE IF NOT EXISTS photo_embeddings (
             photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
             embedding BLOB NOT NULL
         );
-
+        """,
+        """
         CREATE TABLE IF NOT EXISTS albums (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-
+        """,
+        """
         CREATE TABLE IF NOT EXISTS album_photos (
             album_id INTEGER REFERENCES albums(id) ON DELETE CASCADE,
             photo_id INTEGER REFERENCES photos(id) ON DELETE CASCADE,
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (album_id, photo_id)
         );
-        """)
-        
-        # Add deleted column for soft-deletes (ignore if already exists)
-        try:
-            conn.execute("ALTER TABLE photos ADD COLUMN deleted BOOLEAN DEFAULT 0;")
-        except sqlite3.OperationalError:
-            pass
-            
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_deleted ON photos(deleted);")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_filename_size ON photos(filename, file_size);")
-        conn.commit()
+        """,
+    ]),
+    (2, "Performance and query optimization indexes", [
+        "CREATE INDEX IF NOT EXISTS idx_photos_taken_at ON photos(taken_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_timeline ON photos(taken_year DESC, taken_month DESC, taken_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_category ON photos(ai_category);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_media_type ON photos(media_type);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_ai_processed ON photos(ai_processed);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_geo ON photos(has_geo, deleted, latitude, longitude);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_deleted ON photos(deleted);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_filename_size ON photos(filename, file_size);",
+    ]),
+]
+
+
+def apply_migrations(conn: sqlite3.Connection) -> None:
+    """Applies pending schema migrations transactionally."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            description TEXT NOT NULL
+        );
+    """)
+    applied_versions = {
+        row[0] for row in conn.execute("SELECT version FROM schema_migrations").fetchall()
+    }
+
+    for version, description, statements in MIGRATIONS:
+        if version not in applied_versions:
+            logger.info(f"Applying migration v{version}: {description}")
+            for stmt in statements:
+                conn.execute(stmt)
+            conn.execute(
+                "INSERT INTO schema_migrations (version, description) VALUES (?, ?);",
+                (version, description),
+            )
+            logger.info(f"Migration v{version} applied successfully.")
+
+    # Backward compatibility safeguard: ensure deleted column exists on legacy schemas
+    try:
+        conn.execute("ALTER TABLE photos ADD COLUMN deleted BOOLEAN DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+
+
+def init_db() -> None:
+    """Creates database tables and applies migrations if they do not exist."""
+    with get_db_connection() as conn:
+        apply_migrations(conn)
 
     # Run automatic deduplication on startup
     try:
