@@ -72,8 +72,10 @@ class AddPhotosToAlbumRequest(BaseModel):
 
 class TimelineMonthItem(BaseModel):
     month: int
-    name: str
+    month_name: str
     count: int
+    cover_id: Optional[int] = None
+    name: Optional[str] = None
 
 
 class TimelineYearItem(BaseModel):

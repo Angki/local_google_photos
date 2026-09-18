@@ -119,6 +119,27 @@ class TestGooglePhotosTakeout(unittest.TestCase):
             self.assertIn("months", first_year)
             self.assertGreater(first_year["total"], 0)
 
+    def test_api_timeline_endpoint(self):
+        """Tests the /api/timeline endpoint via ASGI client to ensure Pydantic response validation passes."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/timeline")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("timeline", data)
+                self.assertIsInstance(data["timeline"], list)
+                if data["timeline"]:
+                    first_item = data["timeline"][0]
+                    self.assertIn("year", first_item)
+                    self.assertIn("total", first_item)
+                    self.assertIn("months", first_item)
+                    if first_item["months"]:
+                        m = first_item["months"][0]
+                        self.assertIn("month", m)
+                        self.assertIn("month_name", m)
+                        self.assertIn("count", m)
+        asyncio.run(_run())
+
     def test_photos_pagination(self):
         """Verifies photo pagination works and returns dictionaries."""
         photos = get_photos(limit=5, offset=0)
