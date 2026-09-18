@@ -801,6 +801,8 @@ def deduplicate_library() -> Dict[str, int]:
                 canonical_item = items[0]
                 duplicate_items = items[1:]
 
+            canonical_id = canonical_item["id"]
+
             for dup in duplicate_items:
                 dup_id = dup["id"]
                 folder_year = dup["folder_year"]

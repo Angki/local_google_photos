@@ -243,6 +243,14 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         self.assertIn("percent", status)
         self.assertEqual(status, scan_status())
 
+    def test_deduplicate_library_execution(self):
+        """Verifies deduplicate_library executes cleanly without variable reference errors."""
+        from backend.database import deduplicate_library
+        res = deduplicate_library()
+        self.assertIsInstance(res, dict)
+        self.assertIn("cleaned_duplicates", res)
+        self.assertIn("mapped_albums", res)
+
 
 if __name__ == "__main__":
     unittest.main()
