@@ -1,0 +1,31 @@
+# ==============================================================================
+# Google Photos Local Takeout Gallery - Dependencies
+# ==============================================================================
+
+# Web Framework & Server
+fastapi>=0.103.0
+uvicorn[standard]>=0.23.0
+websockets>=13.0
+aiofiles>=23.0.0
+pydantic>=2.0.0
+
+# Environment Configuration
+python-dotenv>=1.0.0
+
+# Media Processing
+pillow>=10.0.0
+numpy>=1.24.0
+
+# AI Vision & Semantic Search (PyTorch + HuggingFace CLIP)
+transformers>=4.40.0
+torch>=2.2.0
+torchvision>=0.17.0
+huggingface-hub>=0.20.0
+
+# Utilities
+tqdm>=4.66.0
+rich>=13.0.0
+
+# Optional Dependencies:
+# For Apple HEIC / HEIF image support:
+# pillow-heif>=0.16.0

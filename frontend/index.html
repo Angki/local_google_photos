@@ -1,0 +1,661 @@
+<!--
+==============================================================================
+File: frontend/index.html
+Description: Modern Google Photos-inspired responsive gallery interface,
+             interactive timeline scrubber, AI semantic search bar,
+             lightbox viewer, and real-time background sync drawer.
+
+CHANGELOG:
+2026-09-05 - Initial creation: Built Google Photos clone layout with Inter font,
+             category filter chips, sticky timeline headers, right-hand scrubber,
+             video streaming modal, and live WebSocket progress tracker.
+==============================================================================
+-->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Photos - Local Takeout Gallery</title>
+  <meta name="description" content="Local AI-powered photo management application indexing Google Takeout archives from 2013 to 2026.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260919_110">
+</head>
+<body>
+  <!-- Top App Navigation Bar -->
+  <header class="app-header" id="appHeader">
+    <div class="header-left">
+      <div class="brand-logo" id="brandLogo" title="Google Photos Local Takeout">
+        <!-- Iconic 4-color pinwheel flower -->
+        <svg class="pinwheel-icon" viewBox="0 0 40 40" fill="none">
+          <path d="M20 0C25.5 0 30 4.5 30 10C30 15.5 25.5 20 20 20L20 0Z" fill="#EA4335" />
+          <path d="M40 20C40 25.5 35.5 30 30 30C24.5 30 20 25.5 20 20L40 20Z" fill="#4285F4" />
+          <path d="M20 40C14.5 40 10 35.5 10 30C10 24.5 14.5 20 20 20L20 40Z" fill="#34A853" />
+          <path d="M0 20C0 14.5 4.5 10 10 10C15.5 10 20 14.5 20 20L0 20Z" fill="#FBBC05" />
+        </svg>
+        <span class="brand-title">Google <strong>Photos</strong></span>
+        <span class="brand-tag">Takeout Local</span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <!-- Omnibox Search Bar with AI Semantic indicator -->
+      <div class="search-container" id="searchContainer">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          type="text"
+          id="searchInput"
+          placeholder='Search "sunset", "receipt", "whiteboard", or description...'
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button class="clear-search-btn hidden" id="clearSearchBtn" title="Clear search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <div class="search-badge" id="searchBadge" title="AI semantic vector search active">
+          <span class="sparkle-icon">✨</span> AI Search
+        </div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Sync / Scanner Progress Pill -->
+      <button class="sync-pill" id="syncPill" title="Click to view AI & background indexing details">
+        <span class="sync-indicator" id="syncIndicator"></span>
+        <span class="sync-text" id="syncText">Checking...</span>
+      </button>
+
+      <!-- Theme Switcher -->
+      <button class="icon-btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
+
+      <!-- Rescan / Refresh Library Button -->
+      <button class="icon-btn" id="rescanBtn" title="Scan Takeout Library">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Selection Action Bar (Hidden by default) -->
+  <div class="selection-bar hidden" id="selectionBar">
+    <div class="selection-left">
+      <button class="icon-btn cancel-btn" id="cancelSelectionBtn" title="Cancel Selection">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <span class="selection-count" id="selectionCount">0 selected</span>
+    </div>
+    <div class="selection-right">
+      <button class="action-btn" id="selectAllVisibleBtn" title="Select all visible photos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 11 12 14 22 4"></polyline>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        </svg>
+        <span>Select All</span>
+      </button>
+      <button class="action-btn" id="addToAlbumBtn" title="Add to Album">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>Add to Album</span>
+      </button>
+      <button class="action-btn danger-btn" id="deleteSelectedBtn" title="Move to Trash">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        <span>Delete</span>
+      </button>
+      <button class="action-btn hidden" id="restoreSelectedBtn" title="Restore Selected Photos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="1 4 1 10 7 10"></polyline>
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+        </svg>
+        <span>Pulihkan</span>
+      </button>
+      <button class="action-btn danger-btn hidden" id="permanentDeleteSelectedBtn" title="Permanently Delete Selected from Disk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        <span>Hapus Permanen</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Categories Filter Chip Bar -->
+  <nav class="categories-bar" id="categoriesBar">
+    <div class="chips-wrapper" id="chipsWrapper">
+      <button class="chip active" data-category="all">All Photos</button>
+      <button class="chip" data-category="artwork">🎨 Artwork</button>
+      <button class="chip" data-category="documents">📄 Documents</button>
+      <button class="chip" data-category="nature">🌿 Nature</button>
+      <button class="chip" data-category="receipts">🧾 Receipts</button>
+      <button class="chip" data-category="people">👥 People</button>
+      <button class="chip" data-category="food">🍔 Food</button>
+      <button class="chip" data-category="screenshots">📱 Screenshots</button>
+      <button class="chip" data-category="pets & animals">🐾 Animals</button>
+      <button class="chip" data-category="architecture">🏛️ Architecture</button>
+      <button class="chip" data-category="vehicles">🚗 Vehicles</button>
+      <button class="chip" data-category="videos">🎬 Videos Only</button>
+      <button class="chip" data-category="albums">📁 Albums</button>
+      <button class="chip chip-map" data-category="map" id="mapChip" title="Jelajahi Foto di Peta">🗺️ Photo Map</button>
+      <button class="chip chip-trash" data-category="trash" id="trashChip" title="Tempat Sampah">
+        🗑️ Trash <span class="trash-badge hidden" id="trashBadgeCount">0</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Layout -->
+  <div class="main-layout" id="mainLayout">
+    <!-- Gallery Timeline Container -->
+    <main class="timeline-container" id="timelineContainer">
+      <!-- Active Filter Banner (Visible when searching or filtering) -->
+      <div class="filter-banner hidden" id="filterBanner">
+        <span class="filter-desc" id="filterDesc">Showing search results</span>
+        <button class="reset-filter-btn" id="resetFilterBtn">Reset Filter</button>
+      </div>
+
+      <!-- Timeline sections will be dynamically injected here -->
+      <div class="timeline-sections" id="timelineSections">
+        <!-- Initial skeleton loader -->
+        <div class="skeleton-month">
+          <div class="skeleton-header"></div>
+          <div class="skeleton-grid">
+            <div class="skeleton-tile"></div>
+            <div class="skeleton-tile"></div>
+            <div class="skeleton-tile"></div>
+            <div class="skeleton-tile"></div>
+            <div class="skeleton-tile"></div>
+            <div class="skeleton-tile"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Infinite Scroll Trigger -->
+      <div class="scroll-sentinel" id="scrollSentinel">
+        <div class="loading-spinner hidden" id="loadingSpinner"></div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state hidden" id="emptyState">
+        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+        <h3 id="emptyTitle">No photos found</h3>
+        <p id="emptySubtext">Try adjusting your search query or selecting a different category.</p>
+      </div>
+    </main>
+
+    <!-- Album Gallery View (Hidden by default) -->
+    <main class="album-container hidden" id="albumContainer">
+      <div class="album-header">
+        <button class="icon-btn back-btn" id="albumBackBtn" title="Back to Timeline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <h2 id="albumTitle">Album Name</h2>
+        <div class="album-actions">
+          <button class="action-btn danger-btn" id="deleteAlbumBtn" title="Delete Entire Album">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Delete Album</span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Grid of photos in this album -->
+      <div class="timeline-sections">
+          <div class="photo-grid" id="albumGrid">
+            <!-- Album photos injected here -->
+          </div>
+      </div>
+    </main>
+
+    <!-- Trash Gallery View (Hidden by default) -->
+    <main class="album-container hidden" id="trashContainer">
+      <div class="album-header trash-header">
+        <button class="icon-btn back-btn" id="trashBackBtn" title="Kembali ke Galeri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="trash-header-info">
+          <h2>🗑️ Tempat Sampah</h2>
+          <span class="trash-count-badge" id="trashCountBadge">0 item</span>
+        </div>
+        <div class="album-actions">
+          <button class="action-btn danger-btn" id="emptyTrashBtn" title="Kosongkan Semua Sampah dari Disk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Kosongkan Sampah</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="trash-banner">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>Item di sini disembunyikan dari galeri. Anda dapat <strong>Pulihkan</strong> ke galeri kapan saja, atau klik <strong>Kosongkan Sampah</strong> untuk menghapus file fisik asli dan JSON dari hard disk.</span>
+      </div>
+
+      <!-- Grid of photos in trash -->
+      <div class="timeline-sections">
+        <div class="timeline-month">
+          <div class="photo-grid" id="trashGrid">
+            <!-- Trash photos injected here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty Trash State -->
+      <div class="empty-state hidden" id="trashEmptyState">
+        <div class="trash-empty-icon">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </div>
+        <h3>Tempat Sampah Kosong</h3>
+        <p>Tidak ada foto atau video di tempat sampah.</p>
+      </div>
+    </main>
+
+    <!-- Photo Map View (Hidden by default) -->
+    <main class="map-container hidden" id="mapContainer">
+      <div class="map-header-bar">
+        <div class="map-header-left">
+          <button class="icon-btn back-btn" id="mapBackBtn" title="Kembali ke Linimasa">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+          <div class="map-title-wrap">
+            <h2>🗺️ Photo Map</h2>
+            <span class="map-count-badge" id="mapCountBadge">Memuat lokasi...</span>
+          </div>
+        </div>
+        <div class="map-header-actions">
+          <button class="action-btn" id="mapFitAllBtn" title="Tampilkan Semua Lokasi Foto">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="12 8 8 12 12 16 12 8"></polygon>
+            </svg>
+            <span>Pusatkan Semua</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Map Canvas -->
+      <div class="photo-map-wrapper">
+        <div id="photoMapCanvas" class="photo-map-canvas"></div>
+      </div>
+
+      <!-- Floating Bottom Sheet: Photos in current map view -->
+      <div class="map-tray-sheet" id="mapTraySheet">
+        <div class="map-tray-header" id="mapTrayHeader">
+          <div class="map-tray-title">
+            <span>Foto di area peta ini</span>
+            <span class="map-tray-count" id="mapTrayCount">0 foto</span>
+          </div>
+          <button class="tray-toggle-btn" id="mapTrayToggleBtn" title="Buka/Tutup tray">▲</button>
+        </div>
+        <div class="map-tray-scroll" id="mapTrayScroll">
+          <div class="map-tray-grid" id="mapTrayGrid">
+            <!-- Thumbnails of photos in current bounds injected here -->
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Google Photos Interactive Year/Month Scrubber (Right edge) -->
+    <aside class="timeline-scrubber" id="timelineScrubber">
+      <div class="scrubber-track" id="scrubberTrack">
+        <!-- Year nodes dynamically rendered here -->
+      </div>
+      <div class="scrubber-bubble hidden" id="scrubberBubble">
+        <span id="scrubberBubbleText">2026</span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Fullscreen Lightbox / Media Viewer Modal -->
+  <div class="lightbox-modal hidden" id="lightboxModal" role="dialog" aria-modal="true">
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+    
+    <!-- Lightbox Toolbar -->
+    <div class="lightbox-header">
+      <button class="lightbox-btn" id="lightboxBackBtn" title="Back (Esc)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+      </button>
+      <div class="lightbox-meta-summary">
+        <span class="lightbox-date" id="lightboxDate">Jan 8, 2024</span>
+        <span class="lightbox-filename" id="lightboxFilename">20240108_223714.jpg</span>
+      </div>
+      <div class="lightbox-actions">
+        <button class="lightbox-btn" id="lightboxInfoToggleBtn" title="Toggle Info (i)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxOpenOriginalBtn" title="Open Full Resolution">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxRestoreBtn" style="display:none;" title="Pulihkan ke Galeri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="1 4 1 10 7 10"></polyline>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+          </svg>
+        </button>
+        <button class="lightbox-btn danger" id="lightboxPermanentDeleteBtn" style="display:none;" title="Hapus Permanen dari Disk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+        <button class="lightbox-btn danger" id="lightboxDeleteBtn" title="Pindahkan ke Sampah (Delete)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Media Container -->
+    <div class="lightbox-media-wrapper">
+      <button class="nav-arrow nav-prev" id="navPrevBtn" title="Previous photo (Left Arrow)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+
+      <div class="media-display" id="mediaDisplay">
+        <img src="" alt="" id="lightboxImg" class="lightbox-content">
+        <video controls autoplay loop id="lightboxVideo" class="lightbox-content hidden"></video>
+      </div>
+
+      <button class="nav-arrow nav-next" id="navNextBtn" title="Next photo (Right Arrow)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Metadata Slide-Out Inspector Pane -->
+    <aside class="info-sidebar" id="infoSidebar">
+      <div class="sidebar-header">
+        <h3>Info</h3>
+        <button class="close-sidebar-btn" id="closeSidebarBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sidebar-content">
+        <!-- Date & Time -->
+        <div class="info-block">
+          <div class="info-label">Taken At (Takeout JSON)</div>
+          <div class="info-value" id="infoTaken">--</div>
+        </div>
+
+        <!-- AI Detected Category & Tags -->
+        <div class="info-block">
+          <div class="info-label">AI Classification (CLIP)</div>
+          <div class="ai-pill-row">
+            <span class="ai-badge-large" id="infoAiCategory">--</span>
+            <span class="ai-conf-tag" id="infoAiConf">--</span>
+          </div>
+          <div class="tags-container" id="infoAiTags"></div>
+        </div>
+
+        <!-- Details: Dimensions, Size, Origin -->
+        <div class="info-block">
+          <div class="info-label">File Details</div>
+          <div class="details-grid">
+            <div class="detail-item">
+              <span class="d-label">Dimensions</span>
+              <span class="d-val" id="infoDimensions">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="d-label">File Size</span>
+              <span class="d-val" id="infoSize">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="d-label">Folder</span>
+              <span class="d-val" id="infoFolder">--</span>
+            </div>
+            <div class="detail-item">
+              <span class="d-label">Device Origin</span>
+              <span class="d-val" id="infoDevice">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="info-block hidden" id="infoDescBlock">
+          <div class="info-label">Description / Caption</div>
+          <div class="info-value desc-text" id="infoDescription">--</div>
+        </div>
+
+        <!-- Geolocation -->
+        <div class="info-block hidden" id="infoGeoBlock">
+          <div class="info-label">Lokasi & Koordinat</div>
+          <div class="info-value" id="infoGeoCoords">--</div>
+          <div class="mini-map-wrapper">
+            <div id="lightboxMiniMap" class="lightbox-mini-map"></div>
+          </div>
+          <div class="geo-actions-row">
+            <button type="button" class="action-btn geo-action-btn" id="openInPhotoMapBtn">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+                <line x1="8" y1="2" x2="8" y2="18"></line>
+                <line x1="16" y1="6" x2="16" y2="22"></line>
+              </svg>
+              <span>Lihat di Photo Map</span>
+            </button>
+            <a href="#" target="_blank" class="maps-link" id="infoMapsLink">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+              <span>Google Maps</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- People Tagged -->
+        <div class="info-block hidden" id="infoPeopleBlock">
+          <div class="info-label">People</div>
+          <div class="tags-container" id="infoPeopleTags"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Background Indexer & AI Sync Modal / Drawer -->
+  <div class="sync-modal-wrapper hidden" id="syncModalWrapper">
+    <div class="sync-modal-backdrop" id="syncModalBackdrop"></div>
+    <div class="sync-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="spinner-small" id="syncModalSpinner"></div>
+          <div>
+            <h3 id="syncModalTitle">Indexing Takeout Archive</h3>
+            <span class="sync-stage-text" id="syncModalStage">Scanning folders 2013-2026...</span>
+          </div>
+        </div>
+        <button class="close-btn" id="syncModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sync-modal-body">
+        <!-- Progress Bar -->
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="syncProgressBar" style="width: 0%"></div>
+        </div>
+        <div class="progress-stats-row">
+          <span id="syncPercentText">0.0% Complete</span>
+          <span id="syncSpeedText">-- items/sec</span>
+        </div>
+
+        <!-- Detailed Metrics Grid -->
+        <div class="sync-metrics-grid">
+          <div class="metric-card">
+            <span class="metric-num" id="metricDiscovered">0</span>
+            <span class="metric-name">Discovered Files</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-num" id="metricIndexed">0</span>
+            <span class="metric-name">Metadata Ingested</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-num" id="metricThumbnails">0</span>
+            <span class="metric-name">Thumbnails Cached</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-num" id="metricAi">0</span>
+            <span class="metric-name">AI Tagged (CLIP)</span>
+          </div>
+        </div>
+
+        <!-- Current File Activity -->
+        <div class="sync-current-activity">
+          <span class="activity-label">Active File:</span>
+          <span class="activity-filename" id="syncCurrentFile">Waiting...</span>
+        </div>
+      </div>
+
+      <div class="sync-modal-footer">
+        <button class="btn btn-secondary" id="syncPauseBtn">Pause</button>
+        <button class="btn btn-primary" id="syncResumeBtn" style="display:none;">Resume</button>
+        <button class="btn btn-danger" id="syncRescanActionBtn">Force Re-index</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add to Album Modal -->
+  <div class="sync-modal-wrapper hidden" id="albumModalWrapper">
+    <div class="sync-modal-backdrop" id="albumModalBackdrop"></div>
+    <div class="sync-modal-card">
+      <div class="sync-modal-header">
+        <h3 id="albumModalTitle">Add to Album</h3>
+        <button class="close-btn" id="albumModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sync-modal-body">
+        <div class="new-album-section">
+          <input type="text" id="newAlbumName" placeholder="Ketik nama album baru..." autocomplete="off">
+          <button class="btn btn-primary" id="createAlbumBtn">Buat & Tambahkan</button>
+        </div>
+        <hr class="album-divider">
+        <div class="album-list" id="albumList">
+          <!-- Albums injected here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Empty Trash Modal -->
+  <div class="sync-modal-wrapper hidden" id="emptyTrashModalWrapper">
+    <div class="sync-modal-backdrop" id="emptyTrashModalBackdrop"></div>
+    <div class="sync-modal-card delete-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="delete-icon-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 id="emptyTrashModalTitle">Kosongkan Tempat Sampah?</h3>
+            <span class="sync-stage-text">Tindakan ini permanen & tidak dapat dibatalkan</span>
+          </div>
+        </div>
+        <button class="close-btn" id="emptyTrashModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="delete-modal-body">
+        <p class="delete-modal-msg" id="emptyTrashModalMessage">
+          Semua foto dan video di tempat sampah akan <strong>dihapus secara permanen dari hard disk drive</strong> Anda (termasuk file media fisik, companion JSON Google Takeout, dan thumbnail).
+        </p>
+      </div>
+      <div class="sync-modal-footer">
+        <button class="btn btn-secondary" id="emptyTrashModalCancelBtn">Batal</button>
+        <button class="btn btn-danger" id="emptyTrashModalConfirmBtn">Kosongkan Sampah Sekarang</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Leaflet & Marker Clustering JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="/app.js?v=20260919_110"></script>
+</body>
+</html>
