@@ -2230,5 +2230,139 @@ body.is-selecting .photo-tile .select-overlay,
   border-color: var(--google-blue);
 }
 
+/* ==============================================================================
+   Favorites (⭐) UI Elements
+   ============================================================================== */
+.chip-favorites {
+  border-color: rgba(251, 188, 4, 0.4);
+}
+
+.chip-favorites:hover {
+  border-color: #fbbc04;
+  color: #fbbc04;
+}
+
+.chip-favorites.active {
+  background: rgba(251, 188, 4, 0.15);
+  border-color: #fbbc04;
+  color: #fbbc04;
+  font-weight: 600;
+}
+
+/* Tile Favorite Badge */
+.favorite-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(18, 19, 24, 0.85);
+  backdrop-filter: blur(4px);
+  color: #fbbc04;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 2;
+  border: 1px solid rgba(251, 188, 4, 0.35);
+}
+
+.photo-tile:has(.video-badge) .favorite-badge {
+  right: 76px;
+}
+
+/* Lightbox Starred and Playing States */
+.lightbox-btn.starred {
+  color: #fbbc04;
+  background: rgba(251, 188, 4, 0.18);
+}
+
+.lightbox-btn.starred svg {
+  fill: #fbbc04;
+}
+
+.lightbox-btn.playing {
+  color: #8ab4f8;
+  background: rgba(138, 180, 248, 0.25);
+  animation: pulseGlow 1.8s infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* ==============================================================================
+   Keyboard Shortcuts Modal
+   ============================================================================== */
+.shortcuts-modal-card {
+  max-width: 580px;
+  width: 92vw;
+}
+
+.shortcuts-icon-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(138, 180, 248, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+.shortcuts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  gap: 16px;
+  transition: background var(--transition-fast);
+}
+
+.shortcut-row:hover {
+  background: var(--bg-surface-hover);
+}
+
+.shortcut-keys {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.shortcut-keys kbd {
+  display: inline-block;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.shortcut-desc {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+
 
 

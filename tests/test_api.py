@@ -42,6 +42,7 @@ class TestGooglePhotosTakeout(unittest.TestCase):
             versions = [r["version"] for r in rows]
             self.assertIn(1, versions)
             self.assertIn(2, versions)
+            self.assertIn(3, versions)
 
     def test_target_folder_filtering(self):
         """Tests that years 2013-2026 and Takeout albums are accepted, and system folders are rejected."""
@@ -250,6 +251,62 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         self.assertIsInstance(res, dict)
         self.assertIn("cleaned_duplicates", res)
         self.assertIn("mapped_albums", res)
+
+    def test_favorites_system_and_routes(self):
+        """Verifies favorite toggling, batch favoriting, count, and filtering."""
+        from backend.database import (
+            toggle_photo_favorite,
+            set_photos_favorite,
+            get_favorites_count,
+        )
+        from backend.routes import (
+            BatchFavoriteRequest,
+            api_toggle_favorite,
+            api_batch_favorite,
+            api_get_favorites_count,
+        )
+
+        photos = get_photos(limit=2, offset=0)
+        if not photos:
+            self.skipTest("No photos in database.")
+
+        test_id = photos[0]["id"]
+
+        # Ensure known starting state (unfavorited)
+        set_photos_favorite([test_id], is_favorite=False)
+        self.assertFalse(get_photo_by_id(test_id)["is_favorite"])
+
+        # Toggle to favorite
+        new_status = toggle_photo_favorite(test_id)
+        self.assertTrue(new_status)
+        self.assertTrue(get_photo_by_id(test_id)["is_favorite"])
+
+        # Count should be at least 1
+        self.assertGreaterEqual(get_favorites_count(), 1)
+
+        # Filter should include this photo
+        fav_photos = get_photos(is_favorite=True, limit=50)
+        fav_ids = [p["id"] for p in fav_photos]
+        self.assertIn(test_id, fav_ids)
+
+        # Test API endpoints
+        # Toggle back via route
+        toggle_res = api_toggle_favorite(test_id)
+        self.assertTrue(toggle_res["success"])
+        self.assertFalse(toggle_res["is_favorite"])
+
+        # Batch set via route
+        batch_res = api_batch_favorite(BatchFavoriteRequest(photo_ids=[test_id], is_favorite=True))
+        self.assertTrue(batch_res["success"])
+        self.assertEqual(batch_res["updated_count"], 1)
+        self.assertTrue(get_photo_by_id(test_id)["is_favorite"])
+
+        # API count check
+        count_res = api_get_favorites_count()
+        self.assertGreaterEqual(count_res["total"], 1)
+
+        # Clean up
+        set_photos_favorite([test_id], is_favorite=False)
 
 
 if __name__ == "__main__":

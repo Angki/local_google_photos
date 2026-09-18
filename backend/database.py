@@ -108,6 +108,10 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_photos_deleted ON photos(deleted);",
         "CREATE INDEX IF NOT EXISTS idx_photos_filename_size ON photos(filename, file_size);",
     ]),
+    (3, "Add is_favorite column and index for favorited photos", [
+        "ALTER TABLE photos ADD COLUMN is_favorite BOOLEAN DEFAULT 0;",
+        "CREATE INDEX IF NOT EXISTS idx_photos_favorite ON photos(is_favorite, deleted);",
+    ]),
 ]
 
 
@@ -128,16 +132,26 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
         if version not in applied_versions:
             logger.info(f"Applying migration v{version}: {description}")
             for stmt in statements:
-                conn.execute(stmt)
+                try:
+                    conn.execute(stmt)
+                except sqlite3.OperationalError as e:
+                    # Ignore duplicate column if already added
+                    if "duplicate column" not in str(e).lower():
+                        raise
             conn.execute(
                 "INSERT INTO schema_migrations (version, description) VALUES (?, ?);",
                 (version, description),
             )
             logger.info(f"Migration v{version} applied successfully.")
 
-    # Backward compatibility safeguard: ensure deleted column exists on legacy schemas
+    # Backward compatibility safeguard: ensure deleted and is_favorite exist on legacy schemas
     try:
         conn.execute("ALTER TABLE photos ADD COLUMN deleted BOOLEAN DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE photos ADD COLUMN is_favorite BOOLEAN DEFAULT 0;")
     except sqlite3.OperationalError:
         pass
 
@@ -283,6 +297,7 @@ def get_photos(
     category: Optional[str] = None,
     media_type: Optional[str] = None,
     has_geo: Optional[bool] = None,
+    is_favorite: Optional[bool] = None,
     search_text: Optional[str] = None,
     photo_ids: Optional[List[int]] = None,
     album_id: Optional[int] = None,
@@ -296,7 +311,6 @@ def get_photos(
     if album_id is not None:
         conditions.append("id IN (SELECT photo_id FROM album_photos WHERE album_id = ?)")
         params.append(album_id)
-
 
     if photo_ids is not None:
         if not photo_ids:
@@ -325,6 +339,10 @@ def get_photos(
         conditions.append("has_geo = ?")
         params.append(1 if has_geo else 0)
 
+    if is_favorite is not None:
+        conditions.append("is_favorite = ?")
+        params.append(1 if is_favorite else 0)
+
     if search_text:
         term = f"%{search_text.strip()}%"
         conditions.append("(filename LIKE ? OR description LIKE ? OR people LIKE ? OR ai_tags LIKE ? OR ai_category LIKE ?)")
@@ -338,7 +356,7 @@ def get_photos(
                width, height, taken_at, taken_year, taken_month, taken_day,
                taken_formatted, latitude, longitude, has_geo, description,
                people, device_folder, app_source, ai_category, ai_confidence,
-               ai_tags, thumbnail_path
+               ai_tags, thumbnail_path, is_favorite
         FROM photos
         {where_clause}
         {order_clause}
@@ -364,6 +382,43 @@ def get_photos(
                 d["ai_tags"] = []
             result.append(d)
         return result
+
+
+def toggle_photo_favorite(photo_id: int) -> bool:
+    """Toggles the favorite (starred) status for a single photo. Returns new status."""
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT is_favorite FROM photos WHERE id = ?", (photo_id,)).fetchone()
+        if not row:
+            return False
+        new_val = 0 if row["is_favorite"] else 1
+        conn.execute("UPDATE photos SET is_favorite = ? WHERE id = ?", (new_val, photo_id))
+        conn.commit()
+        return bool(new_val)
+
+
+def set_photos_favorite(photo_ids: List[int], is_favorite: bool = True) -> int:
+    """Sets favorite status for multiple photos. Returns count updated."""
+    if not photo_ids:
+        return 0
+    placeholders = ",".join("?" for _ in photo_ids)
+    val = 1 if is_favorite else 0
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE photos SET is_favorite = ? WHERE id IN ({placeholders})",
+            [val] + photo_ids,
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
+def get_favorites_count() -> int:
+    """Returns total active favorited photos."""
+    with get_db_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as count FROM photos WHERE is_favorite = 1 AND deleted = 0"
+        ).fetchone()
+        return row["count"] if row else 0
 
 
 def get_photo_by_id(photo_id: int, include_deleted: bool = False) -> Optional[Dict[str, Any]]:

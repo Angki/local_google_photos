@@ -92,6 +92,14 @@ CHANGELOG:
         </svg>
       </button>
 
+      <!-- Keyboard Shortcuts Help -->
+      <button class="icon-btn" id="shortcutsHelpBtn" title="Keyboard Shortcuts (?)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"></path>
+        </svg>
+      </button>
+
       <!-- Rescan / Refresh Library Button -->
       <button class="icon-btn" id="rescanBtn" title="Scan Takeout Library">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -119,6 +127,12 @@ CHANGELOG:
           <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
         </svg>
         <span>Select All</span>
+      </button>
+      <button class="action-btn" id="favoriteSelectedBtn" title="Tandai Favorit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        <span>Favorit</span>
       </button>
       <button class="action-btn" id="addToAlbumBtn" title="Add to Album">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -154,6 +168,7 @@ CHANGELOG:
   <nav class="categories-bar" id="categoriesBar">
     <div class="chips-wrapper" id="chipsWrapper">
       <button class="chip active" data-category="all">All Photos</button>
+      <button class="chip chip-favorites" data-category="favorites" id="favoritesChip" title="Foto Favorit">⭐ Favorites</button>
       <button class="chip" data-category="artwork">🎨 Artwork</button>
       <button class="chip" data-category="documents">📄 Documents</button>
       <button class="chip" data-category="nature">🌿 Nature</button>
@@ -376,6 +391,23 @@ CHANGELOG:
         <span class="lightbox-filename" id="lightboxFilename">20240108_223714.jpg</span>
       </div>
       <div class="lightbox-actions">
+        <button class="lightbox-btn" id="lightboxFavoriteBtn" title="Favorit (f)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxSlideshowBtn" title="Tayangan Slide (Space)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxDownloadBtn" title="Unduh Media Asli (d)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </button>
         <button class="lightbox-btn" id="lightboxInfoToggleBtn" title="Toggle Info (i)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
@@ -646,6 +678,68 @@ CHANGELOG:
       <div class="sync-modal-footer">
         <button class="btn btn-secondary" id="emptyTrashModalCancelBtn">Batal</button>
         <button class="btn btn-danger" id="emptyTrashModalConfirmBtn">Kosongkan Sampah Sekarang</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div class="sync-modal-wrapper hidden" id="shortcutsModalWrapper">
+    <div class="sync-modal-backdrop" id="shortcutsModalBackdrop"></div>
+    <div class="sync-modal-card shortcuts-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="shortcuts-icon-circle">⌨️</div>
+          <div>
+            <h3>Keyboard Shortcuts</h3>
+            <span class="sync-stage-text">Navigasi cepat & kontrol gestur</span>
+          </div>
+        </div>
+        <button class="close-btn" id="shortcutsModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sync-modal-body">
+        <div class="shortcuts-grid">
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>←</kbd> <kbd>→</kbd></div>
+            <span class="shortcut-desc">Foto sebelumnya / selanjutnya di Lightbox</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>F</kbd></div>
+            <span class="shortcut-desc">Tandai atau hapus dari Favorit (⭐)</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>D</kbd></div>
+            <span class="shortcut-desc">Unduh langsung file media resolusi penuh</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>Space</kbd></div>
+            <span class="shortcut-desc">Mulai / jeda Slideshow tayangan otomatis</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>I</kbd></div>
+            <span class="shortcut-desc">Buka / tutup panel detail info & AI tags</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>Del</kbd> / <kbd>Backspace</kbd></div>
+            <span class="shortcut-desc">Pindahkan foto ke Tempat Sampah</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>Esc</kbd></div>
+            <span class="shortcut-desc">Tutup Lightbox, modal, atau batalkan seleksi</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>?</kbd> / <kbd>H</kbd></div>
+            <span class="shortcut-desc">Buka panduan pintasan keyboard ini</span>
+          </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>Shift</kbd> + <kbd>Click</kbd></div>
+            <span class="shortcut-desc">Pilih rentang foto sekaligus (batch selection)</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>

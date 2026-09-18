@@ -44,21 +44,33 @@ When exporting your photo library from Google Photos via Google Takeout:
 - **Natural Language Search**: Query concepts like *"sunset at the beach"*, *"dog playing in grass"*, or *"makan bersama"* to match 512-dimensional vector similarities.
 - **Zero-Shot Categorization**: Automatically classifies media into categories like *Artwork, Documents, Nature, Receipts, People, Food, Screenshots, Pets & Animals, Architecture, Vehicles, Videos*.
 
-### 📂 4. Multi-Select & Custom Virtual Albums
+### ⭐ 4. Favorites & Starred Collection
+- **1-Click Favoriting**: Star photos and videos directly from the Lightbox viewer or via multi-select batch action.
+- **Dedicated Favorites Filter**: Instant `⭐ Favorites` filter chip in the navigation bar to isolate your best memories.
+- **Visual Star Badges**: Displays golden badges on favorited items throughout the timeline and album views.
+
+### ⚡ 5. Keyboard Navigation & Slideshow Mode
+- **Full Keyboard Control**: Fast browsing with `←` / `→` (prev/next), `F` (toggle favorite), `D` (download original), `Space` (slideshow toggle), `I` (info inspector), and `Del` / `Backspace` (trash).
+- **Interactive Shortcuts Guide (`⌨️` / `?`)**: Built-in modal dialog detailing all shortcut keys.
+- **Auto-Play Slideshow**: Smooth auto-advancing slideshow (3.5s interval) to sit back and enjoy your photo archive.
+- **Direct Media Download**: Easily download original full-resolution files directly from the browser.
+
+### 📂 6. Multi-Select & Custom Virtual Albums
 - Hover checkmarks and **Shift+Click** range selection optimized for hundreds of items without browser lag.
-- Floating selection action bar: **Add to Album**, **Delete Selected**, and **Select All Visible**.
+- Floating selection action bar: **Add to Album**, **Favorit**, **Delete Selected**, and **Select All Visible**.
 - Virtual albums organize photos without duplicating or moving physical files on disk.
 
-### 🗑️ 5. Safe Two-Tier Trash System
+### 🗑️ 7. Safe Two-Tier Trash System
 - **Soft Delete by Default**: Deleted photos are hidden from timeline and moved to `🗑️ Trash` with a live count badge.
 - **Batch & Single Restore**: Instantly restore deleted photos back to their timeline position and albums.
 - **Permanent Purge**: Hard delete physically wipes media files, companion JSON files, and thumbnails from disk with safety confirmation.
 - **Empty Trash**: One-click "Kosongkan Sampah" button to clean up all deleted items.
 
-### ⚡ 6. High-Speed Media Processing
+### ⚡ 8. High-Speed Media Processing & Enterprise Observability
 - **Compressed WebP Thumbnails**: On-demand and batch background generation for instant loading.
 - **Video Playback with Seeking**: Custom HTTP Range streaming handler supporting `.mp4`, `.mov`, `.m4v`, `.webm`, `.mkv`, and `.3gp`.
 - **FFmpeg Frame Thumbnails**: Automatically extracts representative video frames for video previews.
+- **Observability**: Structured request latency logs with correlation IDs (`X-Request-ID`) and process times (`X-Process-Time`).
 - **Non-Blocking Background Worker**: Live indexing progress displayed via real-time WebSocket with automatic HTTP polling fallback.
 
 ---
@@ -209,6 +221,9 @@ options:
 | `GET` | `/api/photos` | Paginated timeline photos (`limit`, `offset`, `category`, `year`, `month`) |
 | `GET` | `/api/photos/hierarchy` | Year and month distribution for the timeline scrubber |
 | `GET` | `/api/photos/{photo_id}` | Detailed metadata, tags, GPS coordinates, and companion info |
+| `POST`| `/api/photos/{photo_id}/favorite` | Toggle favorite (star) status for a single photo |
+| `POST`| `/api/photos/favorite` | Batch update favorite status for multiple photos |
+| `GET` | `/api/photos/favorites/count` | Total count of favorited photos |
 | `GET` | `/api/photos/trash` | List of soft-deleted items currently in Trash |
 | `GET` | `/api/photos/trash/count` | Total count of soft-deleted items in Trash |
 | `POST`| `/api/photos/delete` | Soft delete or hard delete photos (`hard_delete: bool`) |

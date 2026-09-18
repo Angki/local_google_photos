@@ -26,6 +26,8 @@
     hasMore: true,
     isLoading: false,
     lightboxIndex: -1,
+    isSlideshowPlaying: false,
+    slideshowTimer: null,
     scannerStatus: null,
     ws: null,
     selectedPhotos: new Set(),
@@ -51,6 +53,7 @@
     syncIndicator: document.getElementById("syncIndicator"),
     syncText: document.getElementById("syncText"),
     themeToggleBtn: document.getElementById("themeToggleBtn"),
+    shortcutsHelpBtn: document.getElementById("shortcutsHelpBtn"),
     rescanBtn: document.getElementById("rescanBtn"),
     scrubberTrack: document.getElementById("scrubberTrack"),
     scrubberBubble: document.getElementById("scrubberBubble"),
@@ -66,6 +69,9 @@
     lightboxVideo: document.getElementById("lightboxVideo"),
     navPrevBtn: document.getElementById("navPrevBtn"),
     navNextBtn: document.getElementById("navNextBtn"),
+    lightboxFavoriteBtn: document.getElementById("lightboxFavoriteBtn"),
+    lightboxSlideshowBtn: document.getElementById("lightboxSlideshowBtn"),
+    lightboxDownloadBtn: document.getElementById("lightboxDownloadBtn"),
     lightboxInfoToggleBtn: document.getElementById("lightboxInfoToggleBtn"),
     lightboxOpenOriginalBtn: document.getElementById("lightboxOpenOriginalBtn"),
     infoSidebar: document.getElementById("infoSidebar"),
@@ -109,6 +115,7 @@
     selectionCount: document.getElementById("selectionCount"),
     cancelSelectionBtn: document.getElementById("cancelSelectionBtn"),
     selectAllVisibleBtn: document.getElementById("selectAllVisibleBtn"),
+    favoriteSelectedBtn: document.getElementById("favoriteSelectedBtn"),
     addToAlbumBtn: document.getElementById("addToAlbumBtn"),
     deleteSelectedBtn: document.getElementById("deleteSelectedBtn"),
     albumModalWrapper: document.getElementById("albumModalWrapper"),
@@ -119,6 +126,11 @@
     albumList: document.getElementById("albumList"),
     lightboxDeleteBtn: document.getElementById("lightboxDeleteBtn"),
     toastContainer: document.getElementById("toastContainer"),
+
+    // Keyboard Shortcuts Modal
+    shortcutsModalWrapper: document.getElementById("shortcutsModalWrapper"),
+    shortcutsModalBackdrop: document.getElementById("shortcutsModalBackdrop"),
+    shortcutsModalCloseBtn: document.getElementById("shortcutsModalCloseBtn"),
 
     // Delete Confirmation Modal (Option B)
     deleteModalWrapper: document.getElementById("deleteModalWrapper"),
@@ -611,6 +623,8 @@
         if (state.currentCategory !== "all") {
           if (state.currentCategory === "videos") {
             params.append("media_type", "video");
+          } else if (state.currentCategory === "favorites") {
+            params.append("is_favorite", "true");
           } else {
             params.append("category", state.currentCategory);
           }
@@ -619,7 +633,11 @@
 
         if (state.currentCategory !== "all") {
           elements.filterBanner.classList.remove("hidden");
-          elements.filterDesc.textContent = `Showing ${state.currentCategory.toUpperCase()}`;
+          if (state.currentCategory === "favorites") {
+            elements.filterDesc.textContent = "Showing ⭐ FAVORITES";
+          } else {
+            elements.filterDesc.textContent = `Showing ${state.currentCategory.toUpperCase()}`;
+          }
         } else if (state.currentYear && state.currentMonth) {
           const mName = fullMonthNames[state.currentMonth] || `Month ${state.currentMonth}`;
           elements.filterBanner.classList.remove("hidden");
@@ -817,6 +835,15 @@
       tile.appendChild(geoBadge);
     }
 
+    // Favorite Star Badge
+    if (photo.is_favorite) {
+      const favBadge = document.createElement("div");
+      favBadge.className = "favorite-badge";
+      favBadge.title = "Favorit (⭐)";
+      favBadge.textContent = "⭐";
+      tile.appendChild(favBadge);
+    }
+
     // Selection Overlay Checkmark Circle (Google Photos style)
     const selectOverlay = document.createElement("div");
     selectOverlay.className = "select-overlay";
@@ -889,6 +916,7 @@
   window.__openPhotoById = openLightbox;
 
   function closeLightbox() {
+    stopSlideshow();
     elements.lightboxModal.classList.add("hidden");
     elements.lightboxVideo.pause();
     elements.lightboxVideo.src = "";
@@ -981,6 +1009,12 @@
       window.open(`/api/media/${photo.id}`, "_blank");
     };
 
+    // Update Favorite button active state
+    if (elements.lightboxFavoriteBtn) {
+      elements.lightboxFavoriteBtn.classList.toggle("starred", Boolean(photo.is_favorite));
+      elements.lightboxFavoriteBtn.title = photo.is_favorite ? "Hapus dari Favorit (f)" : "Tandai Favorit (f)";
+    }
+
     // Toggle actions for Trash view vs Regular gallery
     if (state.currentCategory === "trash") {
       if (elements.lightboxDeleteBtn) elements.lightboxDeleteBtn.style.display = "none";
@@ -990,6 +1024,172 @@
       if (elements.lightboxDeleteBtn) elements.lightboxDeleteBtn.style.display = "inline-flex";
       if (elements.lightboxRestoreBtn) elements.lightboxRestoreBtn.style.display = "none";
       if (elements.lightboxPermanentDeleteBtn) elements.lightboxPermanentDeleteBtn.style.display = "none";
+    }
+  }
+
+  async function toggleLightboxFavorite() {
+    const photo = state.photos[state.lightboxIndex];
+    if (!photo) return;
+
+    try {
+      const res = await fetch(`/api/photos/${photo.id}/favorite`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        photo.is_favorite = data.is_favorite;
+        if (elements.lightboxFavoriteBtn) {
+          elements.lightboxFavoriteBtn.classList.toggle("starred", Boolean(photo.is_favorite));
+          elements.lightboxFavoriteBtn.title = photo.is_favorite ? "Hapus dari Favorit (f)" : "Tandai Favorit (f)";
+        }
+        // Update DOM tile if present in current view
+        const tile = document.querySelector(`.photo-tile[data-id="${photo.id}"]`);
+        if (tile) {
+          let badge = tile.querySelector(".favorite-badge");
+          if (photo.is_favorite) {
+            if (!badge) {
+              badge = document.createElement("div");
+              badge.className = "favorite-badge";
+              badge.title = "Favorit (⭐)";
+              badge.textContent = "⭐";
+              tile.appendChild(badge);
+            }
+          } else if (badge) {
+            badge.remove();
+          }
+        }
+        showToast(photo.is_favorite ? "Ditambahkan ke Favorit ⭐" : "Dihapus dari Favorit", null, null, 2500);
+      }
+    } catch (e) {
+      console.error("Error toggling favorite", e);
+      showToast("Gagal mengubah status favorit", null, null, 2500);
+    }
+  }
+
+  function downloadLightboxPhoto() {
+    const photo = state.photos[state.lightboxIndex];
+    if (!photo) return;
+    const downloadUrl = `/api/media/${photo.id}`;
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = photo.filename || `photo_${photo.id}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast(`Mengunduh "${photo.filename}"...`, null, null, 2500);
+  }
+
+  function toggleLightboxSlideshow() {
+    if (state.isSlideshowPlaying) {
+      stopSlideshow();
+      showToast("Tayangan Slide dijeda", null, null, 2000);
+    } else {
+      startSlideshow();
+      showToast("Tayangan Slide dimulai (3.5s) ▶", null, null, 2000);
+    }
+  }
+
+  function startSlideshow() {
+    state.isSlideshowPlaying = true;
+    if (elements.lightboxSlideshowBtn) {
+      elements.lightboxSlideshowBtn.classList.add("playing");
+      elements.lightboxSlideshowBtn.title = "Jeda Tayangan Slide (Space)";
+      elements.lightboxSlideshowBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="6" y="4" width="4" height="16"></rect>
+          <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>`;
+    }
+    if (state.slideshowTimer) clearInterval(state.slideshowTimer);
+    state.slideshowTimer = setInterval(() => {
+      if (elements.lightboxModal.classList.contains("hidden")) {
+        stopSlideshow();
+        return;
+      }
+      if (state.lightboxIndex < state.photos.length - 1) {
+        navigateLightbox(1);
+      } else {
+        state.lightboxIndex = 0;
+        renderLightboxPhoto();
+      }
+    }, 3500);
+  }
+
+  function stopSlideshow() {
+    state.isSlideshowPlaying = false;
+    if (state.slideshowTimer) {
+      clearInterval(state.slideshowTimer);
+      state.slideshowTimer = null;
+    }
+    if (elements.lightboxSlideshowBtn) {
+      elements.lightboxSlideshowBtn.classList.remove("playing");
+      elements.lightboxSlideshowBtn.title = "Tayangan Slide (Space)";
+      elements.lightboxSlideshowBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>`;
+    }
+  }
+
+  async function favoriteSelectedPhotos(isFavorite = true) {
+    const photoIds = Array.from(state.selectedPhotos);
+    if (photoIds.length === 0) return;
+
+    try {
+      const res = await fetch("/api/photos/favorite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: photoIds, is_favorite: isFavorite }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Update state in memory
+        state.photos.forEach((p) => {
+          if (photoIds.includes(p.id)) {
+            p.is_favorite = isFavorite;
+          }
+        });
+        // Update tiles in DOM
+        photoIds.forEach((id) => {
+          const tile = document.querySelector(`.photo-tile[data-id="${id}"]`);
+          if (tile) {
+            let badge = tile.querySelector(".favorite-badge");
+            if (isFavorite) {
+              if (!badge) {
+                badge = document.createElement("div");
+                badge.className = "favorite-badge";
+                badge.title = "Favorit (⭐)";
+                badge.textContent = "⭐";
+                tile.appendChild(badge);
+              }
+            } else if (badge) {
+              badge.remove();
+            }
+          }
+        });
+        clearSelection();
+        showToast(
+          isFavorite
+            ? `${data.updated_count} foto ditandai Favorit ⭐`
+            : `${data.updated_count} foto dihapus dari Favorit`,
+          null,
+          null,
+          3000
+        );
+      }
+    } catch (e) {
+      console.error("Error batch favoriting photos", e);
+      showToast("Gagal memperbarui status favorit", null, null, 3000);
+    }
+  }
+
+  function openShortcutsModal() {
+    if (elements.shortcutsModalWrapper) {
+      elements.shortcutsModalWrapper.classList.remove("hidden");
+    }
+  }
+
+  function closeShortcutsModal() {
+    if (elements.shortcutsModalWrapper) {
+      elements.shortcutsModalWrapper.classList.add("hidden");
     }
   }
 
@@ -1110,6 +1310,16 @@
     elements.navPrevBtn.addEventListener("click", () => navigateLightbox(-1));
     elements.navNextBtn.addEventListener("click", () => navigateLightbox(1));
 
+    if (elements.lightboxFavoriteBtn) {
+      elements.lightboxFavoriteBtn.addEventListener("click", toggleLightboxFavorite);
+    }
+    if (elements.lightboxSlideshowBtn) {
+      elements.lightboxSlideshowBtn.addEventListener("click", toggleLightboxSlideshow);
+    }
+    if (elements.lightboxDownloadBtn) {
+      elements.lightboxDownloadBtn.addEventListener("click", downloadLightboxPhoto);
+    }
+
     elements.lightboxInfoToggleBtn.addEventListener("click", () => {
       elements.infoSidebar.classList.toggle("open");
     });
@@ -1119,6 +1329,20 @@
 
     // Keyboard navigation
     window.addEventListener("keydown", (e) => {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+      if (activeTag === "input" || activeTag === "textarea") {
+        if (e.key === "Escape") document.activeElement.blur();
+        return;
+      }
+
+      // Close shortcuts modal if open
+      if (elements.shortcutsModalWrapper && !elements.shortcutsModalWrapper.classList.contains("hidden")) {
+        if (e.key === "Escape") {
+          closeShortcutsModal();
+          return;
+        }
+      }
+
       if (!elements.lightboxModal.classList.contains("hidden")) {
         if (e.key === "Escape") closeLightbox();
         else if (e.key === "ArrowLeft") navigateLightbox(-1);
@@ -1127,16 +1351,40 @@
           deleteCurrentLightboxPhoto();
         } else if (e.key.toLowerCase() === "i") {
           elements.infoSidebar.classList.toggle("open");
+        } else if (e.key.toLowerCase() === "f") {
+          toggleLightboxFavorite();
+        } else if (e.key.toLowerCase() === "d") {
+          downloadLightboxPhoto();
+        } else if (e.key === " ") {
+          e.preventDefault();
+          toggleLightboxSlideshow();
         }
       } else if (state.selectedPhotos.size > 0 && e.key === "Escape") {
         clearSelection();
+      } else if (e.key === "?" || e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        openShortcutsModal();
       }
     });
+
+    // Shortcuts modal button events
+    if (elements.shortcutsHelpBtn) {
+      elements.shortcutsHelpBtn.addEventListener("click", openShortcutsModal);
+    }
+    if (elements.shortcutsModalCloseBtn) {
+      elements.shortcutsModalCloseBtn.addEventListener("click", closeShortcutsModal);
+    }
+    if (elements.shortcutsModalBackdrop) {
+      elements.shortcutsModalBackdrop.addEventListener("click", closeShortcutsModal);
+    }
 
     // --- Selection & Album Events ---
     elements.cancelSelectionBtn.addEventListener("click", clearSelection);
     if (elements.selectAllVisibleBtn) {
       elements.selectAllVisibleBtn.addEventListener("click", selectAllVisiblePhotos);
+    }
+    if (elements.favoriteSelectedBtn) {
+      elements.favoriteSelectedBtn.addEventListener("click", () => favoriteSelectedPhotos(true));
     }
     elements.deleteSelectedBtn.addEventListener("click", deleteSelectedPhotos);
     if (elements.lightboxDeleteBtn) {
@@ -1329,11 +1577,13 @@
       if (isTrash) {
         if (elements.addToAlbumBtn) elements.addToAlbumBtn.classList.add("hidden");
         if (elements.deleteSelectedBtn) elements.deleteSelectedBtn.classList.add("hidden");
+        if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.add("hidden");
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.remove("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.remove("hidden");
       } else {
         if (elements.addToAlbumBtn) elements.addToAlbumBtn.classList.remove("hidden");
         if (elements.deleteSelectedBtn) elements.deleteSelectedBtn.classList.remove("hidden");
+        if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.remove("hidden");
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.add("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.add("hidden");
       }

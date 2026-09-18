@@ -39,6 +39,9 @@ from backend.database import (
     get_trash_count,
     permanent_delete_photos,
     delete_photos_from_disk_and_db,
+    toggle_photo_favorite,
+    set_photos_favorite,
+    get_favorites_count,
 )
 from backend.scanner import LibraryScanner
 from backend.thumbnail_manager import generate_thumbnail
@@ -117,6 +120,27 @@ class RestoreActionResponse(BaseModel):
     success: bool
     restored_count: int
     photo_ids: List[int]
+
+
+class FavoriteToggleResponse(BaseModel):
+    success: bool
+    photo_id: int
+    is_favorite: bool
+
+
+class BatchFavoriteRequest(BaseModel):
+    photo_ids: List[int] = Field(..., description="List of photo IDs to update favorite status")
+    is_favorite: bool = Field(True, description="True to mark favorite, False to unmark")
+
+
+class BatchFavoriteResponse(BaseModel):
+    success: bool
+    updated_count: int
+    is_favorite: bool
+
+
+class FavoriteCountResponse(BaseModel):
+    total: int
 
 
 class GeoPointsResponse(BaseModel):
@@ -250,17 +274,19 @@ def list_photos(
     category: Optional[str] = Query(None),
     media_type: Optional[str] = Query(None),
     has_geo: Optional[bool] = Query(None),
+    is_favorite: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     limit: int = Query(80, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """Returns paginated photos with optional timeline and category filters."""
+    """Returns paginated photos with optional timeline, category, and favorite filters."""
     photos = get_photos(
         year=year,
         month=month,
         category=category,
         media_type=media_type,
         has_geo=has_geo,
+        is_favorite=is_favorite,
         search_text=search,
         limit=limit,
         offset=offset,
@@ -324,6 +350,33 @@ def get_photo_detail(photo_id: int):
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
     return photo
+
+
+# ==============================================================================
+# Favorite (Starred) Endpoints
+# ==============================================================================
+
+@api_router.post("/api/photos/{photo_id}/favorite", response_model=FavoriteToggleResponse, tags=["Favorites"], summary="Toggle Photo Favorite")
+def api_toggle_favorite(photo_id: int):
+    """Toggles the favorite (star) status of a single photo."""
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    new_status = toggle_photo_favorite(photo_id)
+    return {"success": True, "photo_id": photo_id, "is_favorite": new_status}
+
+
+@api_router.post("/api/photos/favorite", response_model=BatchFavoriteResponse, tags=["Favorites"], summary="Batch Set Favorite")
+def api_batch_favorite(req: BatchFavoriteRequest):
+    """Sets favorite status for multiple photos."""
+    count = set_photos_favorite(req.photo_ids, req.is_favorite)
+    return {"success": True, "updated_count": count, "is_favorite": req.is_favorite}
+
+
+@api_router.get("/api/photos/favorites/count", response_model=FavoriteCountResponse, tags=["Favorites"], summary="Get Favorites Count")
+def api_get_favorites_count():
+    """Returns total count of favorited photos."""
+    return {"total": get_favorites_count()}
 
 
 # ==============================================================================

@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 import json
 import logging
 from pathlib import Path
+import time
+import uuid
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -76,21 +78,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Security and cache-control middleware
+# Security, correlation ID, and latency logging middleware
 @app.middleware("http")
-async def add_security_and_cache_headers(request, call_next):
+async def add_security_and_logging_middleware(request, call_next):
+    req_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:8]
+    start_time = time.perf_counter()
+
     response = await call_next(request)
-    # Enterprise security headers
+    process_time_ms = (time.perf_counter() - start_time) * 1000
+
+    # Enterprise correlation & security headers
+    response.headers["X-Request-ID"] = req_id
+    response.headers["X-Process-Time"] = f"{process_time_ms:.2f}ms"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-    # Dynamic cache control for frontend development assets
+    # Dynamic cache control for frontend assets
     path = request.url.path
     if path.endswith(".css") or path.endswith(".js") or path == "/" or path.endswith(".html"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+
+    # Structured request logging for API endpoints
+    if path.startswith("/api/") or path in ("/healthz", "/readyz"):
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        logger.info(
+            f"{client_ip} - \"{request.method} {path}\" {response.status_code} ({process_time_ms:.1f}ms) [req:{req_id}]"
+        )
+
     return response
 
 
