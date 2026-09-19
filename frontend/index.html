@@ -415,6 +415,14 @@ CHANGELOG:
             <line x1="12" y1="8" x2="12.01" y2="8"></line>
           </svg>
         </button>
+        <button class="lightbox-btn" id="lightboxOpenLocalBtn" style="display:none;" title="Buka di Pemutar Video Laptop (VLC / Windows Media Player)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <polygon points="10 8 16 11 10 14 10 8" fill="currentColor"></polygon>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </button>
         <button class="lightbox-btn" id="lightboxOpenOriginalBtn" title="Open Full Resolution">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -453,7 +461,7 @@ CHANGELOG:
 
       <div class="media-display" id="mediaDisplay">
         <img src="" alt="" id="lightboxImg" class="lightbox-content">
-        <video controls autoplay loop id="lightboxVideo" class="lightbox-content hidden"></video>
+        <video controls autoplay loop playsinline preload="auto" id="lightboxVideo" class="lightbox-content hidden"></video>
       </div>
 
       <button class="nav-arrow nav-next" id="navNextBtn" title="Next photo (Right Arrow)">

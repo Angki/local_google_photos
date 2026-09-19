@@ -329,6 +329,55 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         # Clean up
         set_photos_favorite([test_id], is_favorite=False)
 
+    def test_media_streaming_and_ranges(self):
+        """Verifies full media streaming and RFC-compliant HTTP 206 Range requests."""
+        photos = get_photos(limit=5, offset=0)
+        videos = [p for p in photos if p["media_type"] == "video"]
+        if not videos:
+            self.skipTest("No video available for streaming test.")
+        vid = videos[0]
+
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                # 1. Full content request
+                resp1 = await client.get(f"/api/media/{vid['id']}")
+                self.assertEqual(resp1.status_code, 200)
+                self.assertEqual(resp1.headers.get("accept-ranges"), "bytes")
+                self.assertIn("video/", resp1.headers.get("content-type", ""))
+
+                # 2. Sub-range request (bytes=0-1023)
+                resp2 = await client.get(f"/api/media/{vid['id']}", headers={"Range": "bytes=0-1023"})
+                self.assertEqual(resp2.status_code, 206)
+                self.assertIn("bytes 0-1023/", resp2.headers.get("content-range", ""))
+                self.assertEqual(resp2.headers.get("content-length"), "1024")
+                self.assertEqual(len(resp2.content), 1024)
+
+                # 3. Open-ended range request (bytes=100-)
+                resp3 = await client.get(f"/api/media/{vid['id']}", headers={"Range": "bytes=100-"})
+                self.assertEqual(resp3.status_code, 206)
+                self.assertIn("bytes 100-", resp3.headers.get("content-range", ""))
+
+                # 4. Out-of-bounds range request
+                resp4 = await client.get(f"/api/media/{vid['id']}", headers={"Range": "bytes=9999999999-99999999999"})
+                self.assertEqual(resp4.status_code, 416)
+        asyncio.run(_run())
+
+    def test_media_open_local(self):
+        """Verifies the open-local endpoint triggers desktop system launcher."""
+        photos = get_photos(limit=1, offset=0)
+        if not photos:
+            self.skipTest("No photo found.")
+        pid = photos[0]["id"]
+
+        with patch("os.startfile", return_value=None) as mock_start:
+            async def _run():
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                    resp = await client.post(f"/api/media/{pid}/open-local")
+                    self.assertEqual(resp.status_code, 200)
+                    self.assertTrue(resp.json().get("success"))
+                    mock_start.assert_called_once()
+            asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

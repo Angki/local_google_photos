@@ -73,6 +73,7 @@
     lightboxSlideshowBtn: document.getElementById("lightboxSlideshowBtn"),
     lightboxDownloadBtn: document.getElementById("lightboxDownloadBtn"),
     lightboxInfoToggleBtn: document.getElementById("lightboxInfoToggleBtn"),
+    lightboxOpenLocalBtn: document.getElementById("lightboxOpenLocalBtn"),
     lightboxOpenOriginalBtn: document.getElementById("lightboxOpenOriginalBtn"),
     infoSidebar: document.getElementById("infoSidebar"),
     closeSidebarBtn: document.getElementById("closeSidebarBtn"),
@@ -942,12 +943,32 @@
     if (photo.media_type === "video") {
       elements.lightboxImg.classList.add("hidden");
       elements.lightboxVideo.classList.remove("hidden");
+      if (elements.lightboxOpenLocalBtn) elements.lightboxOpenLocalBtn.style.display = "inline-flex";
+
+      // Reset and reload video stream cleanly
+      elements.lightboxVideo.pause();
+      elements.lightboxVideo.muted = false;
       elements.lightboxVideo.src = `/api/media/${photo.id}`;
-      elements.lightboxVideo.play().catch(() => {});
+      elements.lightboxVideo.load();
+
+      const playPromise = elements.lightboxVideo.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("Autoplay with audio blocked by browser policy, muting for instant playback:", err);
+          elements.lightboxVideo.muted = true;
+          elements.lightboxVideo.play().catch(() => {});
+        });
+      }
+
+      elements.lightboxVideo.onerror = () => {
+        console.warn("Video failed to play in browser (codec incompatibility or network error)");
+        showToast("Browser tidak dapat mendecode video ini. Klik tombol layar di kanan atas untuk memutar di aplikasi video laptop.");
+      };
     } else {
       elements.lightboxVideo.classList.add("hidden");
       elements.lightboxVideo.pause();
       elements.lightboxVideo.src = "";
+      if (elements.lightboxOpenLocalBtn) elements.lightboxOpenLocalBtn.style.display = "none";
       elements.lightboxImg.classList.remove("hidden");
       elements.lightboxImg.src = `/api/media/${photo.id}`;
     }
@@ -1008,6 +1029,21 @@
     elements.lightboxOpenOriginalBtn.onclick = () => {
       window.open(`/api/media/${photo.id}`, "_blank");
     };
+
+    if (elements.lightboxOpenLocalBtn) {
+      elements.lightboxOpenLocalBtn.onclick = async () => {
+        try {
+          const res = await fetch(`/api/media/${photo.id}/open-local`, { method: "POST" });
+          if (res.ok) {
+            showToast("Video dibuka di pemutar aplikasi laptop (VLC/Default)");
+          } else {
+            window.open(`/api/media/${photo.id}`, "_blank");
+          }
+        } catch (e) {
+          window.open(`/api/media/${photo.id}`, "_blank");
+        }
+      };
+    }
 
     // Update Favorite button active state
     if (elements.lightboxFavoriteBtn) {

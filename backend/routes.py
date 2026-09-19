@@ -452,7 +452,7 @@ def api_get_video_thumbnails_status():
 async def get_media(photo_id: int, request: Request):
     """
     Streams original image or video file.
-    Supports HTTP Range requests (206 Partial Content) for fluid video playback.
+    Supports RFC-compliant HTTP Range requests (206 Partial Content) for fluid video seeking.
     """
     photo = get_photo_by_id(photo_id)
     if not photo:
@@ -462,48 +462,117 @@ async def get_media(photo_id: int, request: Request):
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Original media file not found on disk")
 
-    mime_type, _ = mimetypes.guess_type(str(file_path))
-    if not mime_type:
-        mime_type = "video/mp4" if photo.get("media_type") == "video" else "image/jpeg"
+    # Normalize MIME types across platforms
+    ext = file_path.suffix.lower()
+    if ext in [".mp4", ".m4v"]:
+        mime_type = "video/mp4"
+    elif ext in [".mov", ".qt"]:
+        mime_type = "video/quicktime"
+    elif ext in [".webm"]:
+        mime_type = "video/webm"
+    elif ext in [".mkv"]:
+        mime_type = "video/x-matroska"
+    elif ext in [".avi"]:
+        mime_type = "video/x-msvideo"
+    elif ext in [".jpg", ".jpeg"]:
+        mime_type = "image/jpeg"
+    elif ext in [".png"]:
+        mime_type = "image/png"
+    elif ext in [".webp"]:
+        mime_type = "image/webp"
+    elif ext in [".gif"]:
+        mime_type = "image/gif"
+    else:
+        mime_type, _ = mimetypes.guess_type(str(file_path))
+        if not mime_type:
+            mime_type = "video/mp4" if photo.get("media_type") == "video" else "image/jpeg"
 
-    # Handle HTTP Range requests for video seeking
-    range_header = request.headers.get("Range")
     file_size = file_path.stat().st_size
+    range_header = request.headers.get("Range")
 
+    # Handle HTTP Range requests for video seeking and streaming
     if range_header and photo.get("media_type") == "video":
-        byte1, byte2 = 0, None
-        match = range_header.replace("bytes=", "").split("-")
-        if match[0]:
-            byte1 = int(match[0])
-        if len(match) > 1 and match[1]:
-            byte2 = int(match[1])
+        try:
+            range_str = range_header.strip()
+            if range_str.startswith("bytes="):
+                range_str = range_str[6:]
+            parts = range_str.split("-")
+            if parts[0] and parts[1]:
+                start = int(parts[0])
+                end = int(parts[1])
+            elif parts[0] and not parts[1]:
+                start = int(parts[0])
+                end = file_size - 1
+            elif not parts[0] and parts[1]:
+                suffix_len = int(parts[1])
+                start = max(0, file_size - suffix_len)
+                end = file_size - 1
+            else:
+                start = 0
+                end = file_size - 1
+        except Exception:
+            start = 0
+            end = file_size - 1
 
-        chunk_size = 1024 * 1024 * 2  # 2MB chunks
-        length = file_size - byte1
-        if byte2 is not None:
-            length = byte2 - byte1 + 1
-        elif length > chunk_size:
-            length = chunk_size
-        end = byte1 + length - 1
+        if start >= file_size or end < start:
+            return Response(
+                status_code=416,
+                headers={
+                    "Content-Range": f"bytes */{file_size}",
+                    "Accept-Ranges": "bytes",
+                },
+            )
 
-        def iterfile():
+        end = min(end, file_size - 1)
+        content_length = end - start + 1
+
+        def iterfile(offset: int, to_read: int):
             with open(file_path, "rb") as f:
-                f.seek(byte1)
-                yield f.read(length)
+                f.seek(offset)
+                chunk_len = 256 * 1024  # 256KB buffer for smooth streaming
+                bytes_remaining = to_read
+                while bytes_remaining > 0:
+                    read_len = min(bytes_remaining, chunk_len)
+                    data = f.read(read_len)
+                    if not data:
+                        break
+                    yield data
+                    bytes_remaining -= len(data)
 
         headers = {
-            "Content-Range": f"bytes {byte1}-{end}/{file_size}",
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
             "Accept-Ranges": "bytes",
-            "Content-Length": str(length),
+            "Content-Length": str(content_length),
             "Content-Type": mime_type,
         }
-        return StreamingResponse(iterfile(), status_code=206, headers=headers)
+        return StreamingResponse(iterfile(start, content_length), status_code=206, headers=headers)
 
     return FileResponse(
         file_path,
         media_type=mime_type,
         headers={"Accept-Ranges": "bytes"},
     )
+
+
+@api_router.post("/api/media/{photo_id}/open-local", tags=["Media"], summary="Open Media in Local App")
+def open_media_in_local_app(photo_id: int):
+    """
+    Opens the media file in the operating system's default media player (e.g. VLC, Windows Media Player).
+    """
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    file_path = Path(photo["file_path"])
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Original media file not found on disk")
+
+    try:
+        import os
+        os.startfile(str(file_path))
+        return {"success": True, "message": f"Opened {file_path.name} in desktop player"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open in desktop player: {str(e)}")
 
 
 # ==============================================================================
