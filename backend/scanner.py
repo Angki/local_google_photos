@@ -203,15 +203,19 @@ class LibraryScanner:
                 media_type = "video" if ext in VIDEO_EXTENSIONS else "image"
                 mime_type = mimetypes.guess_type(str(media_path))[0]
 
+                folder_name = media_path.parent.name
+                folder_year_match = YEAR_FOLDER_PATTERN.match(folder_name)
+                folder_year_val = int(folder_year_match.group(1)) if folder_year_match else None
+
                 try:
-                    meta = parse_photo_metadata(media_path)
+                    meta = parse_photo_metadata(media_path, fallback_year=folder_year_val)
                     stat = media_path.stat()
                     file_size = stat.st_size
                 except Exception:
                     file_size = 0
                     meta = {
                         "taken_at": int(time.time()),
-                        "taken_year": 2026,
+                        "taken_year": folder_year_val or 2026,
                         "taken_month": 1,
                         "taken_day": 1,
                         "taken_formatted": "",
@@ -226,8 +230,7 @@ class LibraryScanner:
                         "google_url": "",
                     }
 
-                folder_name = media_path.parent.name
-                is_album = not YEAR_FOLDER_PATTERN.match(folder_name)
+                is_album = not folder_year_match
 
                 # If this photo is in an album folder and already exists in the library, link to album without duplicating
                 if is_album and file_size > 0:

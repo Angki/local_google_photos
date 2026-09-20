@@ -11,13 +11,124 @@
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from PIL import Image, ExifTags
 
 # Regex to detect duplicate numbering like "IMG_001(1).jpg" -> base "IMG_001", num "1", ext ".jpg"
 NUMBERED_FILE_REGEX = re.compile(r"^(.*?)\((\d+)\)(\.[^.]+)$")
+YEAR_FOLDER_REGEX = re.compile(r"^Photos from (\d{4})$", re.IGNORECASE)
+
+
+def extract_date_from_filename(filename: str, fallback_year: Optional[int] = None) -> Optional[datetime]:
+    """
+    Extracts capture datetime from filename using regex patterns for camera standard,
+    WhatsApp, 1998CAM, epoch timestamps, and screenshots.
+    If fallback_year is provided, ensures the year aligns with the folder year.
+    If no date pattern matches and fallback_year is provided, returns Jan 1 of that year.
+    """
+    stem = Path(filename).stem
+
+    def make_dt(y: int, mo: int, d: int, h: int = 12, mi: int = 0, s: int = 0) -> Optional[datetime]:
+        target_year = fallback_year if fallback_year is not None else y
+        # Clamp day to valid range for month
+        if mo in (4, 6, 9, 11):
+            d = min(d, 30)
+        elif mo == 2:
+            is_leap = (target_year % 4 == 0 and (target_year % 100 != 0 or target_year % 400 == 0))
+            d = min(d, 29 if is_leap else 28)
+        else:
+            d = min(d, 31)
+        try:
+            return datetime(target_year, mo, max(1, d), min(23, max(0, h)), min(59, max(0, mi)), min(59, max(0, s)))
+        except ValueError:
+            return None
+
+    # 1. Full camera/screenshot format: YYYYMMDD_HHMMSS (e.g. 20210715_170109, IMG_20211025_212930_508, IMG20210312231839, Screenshot_20211029-163538)
+    m = re.search(r"(?:^|[^\d])(20\d\d)[_-]?([01]\d)[_-]?([0-3]\d)[_-]?([0-2]\d)([0-5]\d)([0-5]\d)", stem)
+    if m:
+        y, mo, d, h, mi, s = map(int, m.groups())
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            res = make_dt(y, mo, d, h, mi, s)
+            if res:
+                return res
+
+    # 2. 1998CAM app format: 1998CAM_2021_01_04_14_32_47_FN
+    m = re.search(r"1998CAM_(20\d\d)_([01]\d)_([0-3]\d)_([0-2]\d)_([0-5]\d)_([0-5]\d)", stem, re.I)
+    if m:
+        y, mo, d, h, mi, s = map(int, m.groups())
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            res = make_dt(y, mo, d, h, mi, s)
+            if res:
+                return res
+
+    # 3. WhatsApp format: VID-20211017-WA0081, IMG-20210223-WA0031
+    m = re.search(r"(?:IMG|VID)[_-](20\d\d)([01]\d)([0-3]\d)[_-]WA\d+", stem, re.I)
+    if m:
+        y, mo, d = map(int, m.groups())
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            res = make_dt(y, mo, d)
+            if res:
+                return res
+
+    # 4. Video camera prefix with MM and DD: VID_\d{4}(MM)(DD)_(HH)(MM)(SS) (e.g. VID_23471011_115355_190)
+    m = re.search(r"VID_\d{4}([01]\d)([0-3]\d)[_-]([0-2]\d)([0-5]\d)([0-5]\d)", stem, re.I)
+    if m:
+        mo, d, h, mi, s = map(int, m.groups())
+        if 1 <= mo <= 12 and 1 <= d <= 31 and fallback_year is not None:
+            res = make_dt(fallback_year, mo, d, h, mi, s)
+            if res:
+                return res
+
+    # 5. Standard compact date: YYYYMMDD
+    m = re.search(r"(?:^|[^\d])(20\d\d)([01]\d)([0-3]\d)(?:[^\d]|$)", stem)
+    if m:
+        y, mo, d = map(int, m.groups())
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            res = make_dt(y, mo, d)
+            if res:
+                return res
+
+    # 6. Delimited date: YYYY-MM-DD or YYYY_MM_DD
+    m = re.search(r"(?:^|[^\d])(20\d\d)[-_]([01]\d)[-_]([0-3]\d)(?:[^\d]|$)", stem)
+    if m:
+        y, mo, d = map(int, m.groups())
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            res = make_dt(y, mo, d)
+            if res:
+                return res
+
+    # 7. Unix Epoch millisecond (13 digits: FB_IMG_1611317343217, 1615579230801)
+    m = re.search(r"(?:^|[^\d])(1[3-7]\d{11})(?:[^\d]|$)", stem)
+    if m:
+        try:
+            ts = int(m.group(1)) / 1000.0
+            dt = datetime.fromtimestamp(ts)
+            res = make_dt(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+            if res:
+                return res
+        except (ValueError, OSError):
+            pass
+
+    # 8. Unix Epoch second (10 digits: 1611317343)
+    m = re.search(r"(?:^|[^\d])(1[3-7]\d{8})(?:[^\d]|$)", stem)
+    if m:
+        try:
+            ts = int(m.group(1))
+            dt = datetime.fromtimestamp(ts)
+            res = make_dt(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+            if res:
+                return res
+        except (ValueError, OSError):
+            pass
+
+    # 9. Fallback when no date pattern matched:
+    # If in a year folder, default to January 1st of that year as requested
+    if fallback_year is not None:
+        return datetime(fallback_year, 1, 1, 12, 0, 0)
+
+    return None
 
 
 def find_metadata_json(media_path: Path) -> Optional[Path]:
@@ -87,13 +198,25 @@ def extract_exif_datetime(image_path: Path) -> Optional[int]:
     return None
 
 
-def parse_photo_metadata(media_path: Path) -> Dict[str, Any]:
+def parse_photo_metadata(media_path: Path, fallback_year: Optional[int] = None) -> Dict[str, Any]:
     """
-    Parses Google Takeout JSON companion file or falls back to EXIF / file stats.
+    Parses Google Takeout JSON companion file or falls back to EXIF,
+    filename date parsing, or parent directory year fallback.
     Returns a normalized dictionary of metadata.
     """
     json_path = find_metadata_json(media_path)
     data: Dict[str, Any] = {}
+
+    parent_name = media_path.parent.name
+    year_match = YEAR_FOLDER_REGEX.match(parent_name)
+    if year_match:
+        parent_folder_year: Optional[int] = int(year_match.group(1))
+    elif fallback_year is not None:
+        parent_folder_year = fallback_year
+    else:
+        # Check if parent folder name contains a 4-digit year like "LaLaLa Fest 2025" or "RIC 2022"
+        year_search = re.search(r"\b(20\d\d)\b", parent_name)
+        parent_folder_year = int(year_search.group(1)) if year_search else None
 
     if json_path:
         try:
@@ -133,6 +256,13 @@ def parse_photo_metadata(media_path: Path) -> Dict[str, Any]:
     if not taken_timestamp and media_path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
         taken_timestamp = extract_exif_datetime(media_path)
 
+    # Fallback to filename date parsing (especially for folders with no JSON like 2021, 2020)
+    if not taken_timestamp or taken_timestamp <= 0:
+        parsed_dt = extract_date_from_filename(media_path.name, fallback_year=parent_folder_year)
+        if parsed_dt:
+            taken_timestamp = int(parsed_dt.timestamp())
+            taken_formatted = parsed_dt.strftime("%b %d, %Y, %I:%M:%S %p")
+
     # Final Fallback to OS file modification time
     if not taken_timestamp or taken_timestamp <= 0:
         try:
@@ -145,6 +275,21 @@ def parse_photo_metadata(media_path: Path) -> Dict[str, Any]:
     year = dt.year
     month = dt.month
     day = dt.day
+
+    # If inside a year archive (Photos from YYYY), ensure year alignment
+    if parent_folder_year is not None and year != parent_folder_year:
+        # Check if UTC time resolves the boundary (e.g. Dec 31 UTC vs Jan 1 local)
+        try:
+            dt_utc = datetime.fromtimestamp(taken_timestamp, timezone.utc)
+            if dt_utc.year == parent_folder_year:
+                year = dt_utc.year
+                month = dt_utc.month
+                day = dt_utc.day
+            else:
+                year = parent_folder_year
+        except Exception:
+            year = parent_folder_year
+
     if not taken_formatted:
         taken_formatted = dt.strftime("%b %d, %Y, %I:%M:%S %p")
     else:
