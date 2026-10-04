@@ -22,10 +22,15 @@ CHANGELOG:
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#202124">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-  <link rel="stylesheet" href="/styles.css?v=20260919_110">
+  <link rel="stylesheet" href="/styles.css?v=20261004_200">
 </head>
 <body>
   <!-- Top App Navigation Bar -->
@@ -106,6 +111,14 @@ CHANGELOG:
           <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
         </svg>
       </button>
+
+      <!-- LAN Mode / QR Code Mobile Quick-Access -->
+      <button class="icon-btn" id="lanShareBtn" title="Buka di HP / WiFi LAN (QR Code)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -139,6 +152,13 @@ CHANGELOG:
           <path d="M12 5v14M5 12h14"/>
         </svg>
         <span>Add to Album</span>
+      </button>
+      <button class="action-btn" id="lockSelectedBtn" title="Sembunyikan ke Folder Terkunci">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>Kunci</span>
       </button>
       <button class="action-btn danger-btn" id="deleteSelectedBtn" title="Move to Trash">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -182,8 +202,14 @@ CHANGELOG:
       <button class="chip" data-category="videos">🎬 Videos Only</button>
       <button class="chip" data-category="albums">📁 Albums</button>
       <button class="chip chip-map" data-category="map" id="mapChip" title="Jelajahi Foto di Peta">🗺️ Photo Map</button>
+      <button class="chip chip-duplicates" data-category="duplicates" id="duplicatesChip" title="Deteksi Foto Duplikat & Serupa">
+        🧹 Duplicates <span class="trash-badge hidden" id="duplicatesBadgeCount">0</span>
+      </button>
       <button class="chip chip-trash" data-category="trash" id="trashChip" title="Tempat Sampah">
         🗑️ Trash <span class="trash-badge hidden" id="trashBadgeCount">0</span>
+      </button>
+      <button class="chip chip-locked" data-category="locked" id="lockedChip" title="Folder Terkunci (Dilindungi PIN)">
+        🔒 Locked <span class="trash-badge hidden" id="lockedBadgeCount">0</span>
       </button>
     </div>
   </nav>
@@ -192,6 +218,20 @@ CHANGELOG:
   <div class="main-layout" id="mainLayout">
     <!-- Gallery Timeline Container -->
     <main class="timeline-container" id="timelineContainer">
+      <!-- Google Photos Style Memories Story Bar ("Pada Hari Ini") -->
+      <section class="memories-section hidden" id="memoriesSection">
+        <div class="memories-header">
+          <div class="memories-title-wrap">
+            <span class="memories-sparkle">✨</span>
+            <span class="memories-title">Memories • Pada Hari Ini</span>
+          </div>
+          <span class="memories-subtitle" id="memoriesSubtitle">Nostalgia foto tahun-tahun lalu</span>
+        </div>
+        <div class="memories-carousel" id="memoriesCarousel">
+          <!-- Memory story cards dynamically rendered here -->
+        </div>
+      </section>
+
       <!-- Active Filter Banner (Visible when searching or filtering) -->
       <div class="filter-banner hidden" id="filterBanner">
         <span class="filter-desc" id="filterDesc">Showing search results</span>
@@ -315,6 +355,63 @@ CHANGELOG:
       </div>
     </main>
 
+    <!-- Clean Up / Duplicates View (Hidden by default) -->
+    <main class="album-container hidden" id="duplicatesContainer">
+      <div class="album-header duplicates-header">
+        <button class="icon-btn back-btn" id="duplicatesBackBtn" title="Kembali ke Galeri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="trash-header-info">
+          <h2>🧹 Asisten Pembersih Duplikat</h2>
+          <span class="trash-count-badge" id="duplicatesSummaryBadge">Mendeteksi...</span>
+        </div>
+        <div class="album-actions">
+          <button class="action-btn" id="duplicatesAutoSelectBtn" title="Pilih otomatis semua foto duplikat (pertahankan 1 foto terbaik)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            <span>Pilih Otomatis Duplikat</span>
+          </button>
+          <button class="action-btn danger-btn" id="duplicatesDeleteSelectedBtn" title="Pindahkan duplikat yang dipilih ke Tempat Sampah">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Pindahkan ke Sampah (<span id="duplicatesSelectedCount">0</span>)</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="trash-banner">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span id="duplicatesNoticeText">Memindai file duplikat 100% identik dan foto burst beruntun untuk menghemat kapasitas hard disk Anda. Foto berlabel <strong>BEST</strong> direkomendasikan untuk dipertahankan.</span>
+      </div>
+
+      <!-- Duplicate Groups List -->
+      <div class="duplicates-groups-container" id="duplicatesGroupsList">
+        <!-- Duplicate groups dynamically rendered here -->
+      </div>
+
+      <!-- Empty Duplicates State -->
+      <div class="empty-state hidden" id="duplicatesEmptyState">
+        <div class="trash-empty-icon" style="background: rgba(52, 168, 83, 0.15); color: #34A853;">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h3>Galeri Sangat Rapi!</h3>
+        <p>Tidak ditemukan foto duplikat atau jepretan berulang yang perlu dibersihkan.</p>
+      </div>
+    </main>
+
     <!-- Photo Map View (Hidden by default) -->
     <main class="map-container hidden" id="mapContainer">
       <div class="map-header-bar">
@@ -363,6 +460,60 @@ CHANGELOG:
       </div>
     </main>
 
+    <!-- Locked Photos Folder View (Hidden by default, PIN protected) -->
+    <main class="album-container hidden" id="lockedContainer">
+      <div class="album-header locked-header">
+        <button class="icon-btn back-btn" id="lockedBackBtn" title="Kembali ke Galeri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="trash-header-info">
+          <h2>🔒 Folder Terkunci</h2>
+          <span class="trash-count-badge" id="lockedCountBadge">0 item</span>
+        </div>
+        <div class="album-actions">
+          <button class="action-btn" id="lockedRelockBtn" title="Kunci Kembali Sekarang">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>Kunci Kembali</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="trash-banner">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>Item di dalam Folder Terkunci disembunyikan dari linimasa, pencarian biasa, memories, dan peta foto. Anda dapat membuka atau memindahkannya kembali ke galeri umum kapan saja.</span>
+      </div>
+
+      <!-- Grid of locked photos -->
+      <div class="timeline-sections">
+        <div class="timeline-month">
+          <div class="photo-grid" id="lockedGrid">
+            <!-- Locked photos injected here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty Locked State -->
+      <div class="empty-state hidden" id="lockedEmptyState">
+        <div class="trash-empty-icon" style="background: rgba(234, 67, 53, 0.15); color: #ea4335;">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h3>Folder Terkunci Masih Kosong</h3>
+        <p>Pilih foto di linimasa lalu klik tombol "Kunci" di toolbar untuk menyembunyikannya ke sini.</p>
+      </div>
+    </main>
+
     <!-- Google Photos Interactive Year/Month Scrubber (Right edge) -->
     <aside class="timeline-scrubber" id="timelineScrubber">
       <div class="scrubber-track" id="scrubberTrack">
@@ -391,6 +542,16 @@ CHANGELOG:
         <span class="lightbox-filename" id="lightboxFilename">20240108_223714.jpg</span>
       </div>
       <div class="lightbox-actions">
+        <button class="lightbox-btn live-toggle-btn hidden" id="lightboxLiveBtn" title="Putar Cuplikan Video Live Photo (L)">
+          <span class="live-circle">◉</span>
+          <span class="live-text">LIVE</span>
+        </button>
+        <button class="lightbox-btn" id="lightboxEditBtn" title="Edit Foto (e)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+        </button>
         <button class="lightbox-btn" id="lightboxFavoriteBtn" title="Favorit (f)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
@@ -413,6 +574,28 @@ CHANGELOG:
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="16" x2="12" y2="12"></line>
             <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxOcrBtn" title="Salin Teks / OCR (Google Lens Style)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7V4h3"></path>
+            <path d="M20 7V4h-3"></path>
+            <path d="M4 17v3h3"></path>
+            <path d="M20 17v3h-3"></path>
+            <line x1="9" y1="12" x2="15" y2="12"></line>
+            <line x1="12" y1="9" x2="12" y2="15"></line>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxLockBtn" title="Kunci & Sembunyikan ke Folder Terkunci">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxUnlockBtn" style="display:none;" title="Keluarkan dari Folder Terkunci">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
           </svg>
         </button>
         <button class="lightbox-btn" id="lightboxOpenLocalBtn" style="display:none;" title="Buka di Pemutar Video Laptop (VLC / Windows Media Player)">
@@ -531,6 +714,7 @@ CHANGELOG:
         <!-- Geolocation -->
         <div class="info-block hidden" id="infoGeoBlock">
           <div class="info-label">Lokasi & Koordinat</div>
+          <div class="location-name-pill hidden" id="infoLocationName">--</div>
           <div class="info-value" id="infoGeoCoords">--</div>
           <div class="mini-map-wrapper">
             <div id="lightboxMiniMap" class="lightbox-mini-map"></div>
@@ -747,6 +931,213 @@ CHANGELOG:
             <div class="shortcut-keys"><kbd>Shift</kbd> + <kbd>Click</kbd></div>
             <span class="shortcut-desc">Pilih rentang foto sekaligus (batch selection)</span>
           </div>
+          <div class="shortcut-row">
+            <div class="shortcut-keys"><kbd>E</kbd></div>
+            <span class="shortcut-desc">Buka studio edit foto (Crop, Rotate, Enhance)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Home LAN & Mobile QR Code Access Modal -->
+  <div class="sync-modal-wrapper hidden" id="lanModalWrapper">
+    <div class="sync-modal-backdrop" id="lanModalBackdrop"></div>
+    <div class="sync-modal-card lan-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="lan-icon-circle">📱</div>
+          <div>
+            <h3>Akses Mobile & Home Wi-Fi</h3>
+            <span class="sync-stage-text">Buka galeri di HP / Tablet dalam jaringan Wi-Fi yang sama</span>
+          </div>
+        </div>
+        <button class="close-btn" id="lanModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sync-modal-body lan-modal-body">
+        <div class="lan-qr-container" id="lanQrContainer">
+          <!-- Standalone SVG QR Code injected here -->
+        </div>
+        <p class="lan-guide-text">
+          Scan kode QR ini menggunakan kamera ponsel Anda atau buka tautan di bawah pada browser HP:
+        </p>
+        <div class="lan-url-box">
+          <input type="text" id="lanUrlInput" readonly value="http://..." />
+          <button class="action-btn" id="lanCopyUrlBtn" title="Salin URL">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Salin</span>
+          </button>
+        </div>
+        <div class="lan-tips-card">
+          💡 <strong>Tips PWA:</strong> Setelah halaman terbuka di Chrome / Safari HP, pilih <em>"Tambahkan ke Layar Utama" (Add to Home Screen)</em> untuk pengalaman aplikasi Native yang mulus!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN Keypad Modal for Locked Folder -->
+  <div class="sync-modal-wrapper hidden" id="pinModalWrapper">
+    <div class="sync-modal-backdrop" id="pinModalBackdrop"></div>
+    <div class="sync-modal-card pin-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="pin-icon-circle">🔒</div>
+          <div>
+            <h3 id="pinModalTitle">Buka Folder Terkunci</h3>
+            <span class="sync-stage-text" id="pinModalSubtitle">Masukkan 4-digit PIN keamanan Anda</span>
+          </div>
+        </div>
+        <button class="close-btn" id="pinModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sync-modal-body pin-modal-body">
+        <div class="pin-dots-row" id="pinDotsRow">
+          <div class="pin-dot" id="pinDot0"></div>
+          <div class="pin-dot" id="pinDot1"></div>
+          <div class="pin-dot" id="pinDot2"></div>
+          <div class="pin-dot" id="pinDot3"></div>
+        </div>
+        <div class="pin-error-text hidden" id="pinErrorText">PIN salah. Silakan coba lagi.</div>
+        
+        <div class="pin-keypad">
+          <button class="keypad-btn" data-key="1">1</button>
+          <button class="keypad-btn" data-key="2">2</button>
+          <button class="keypad-btn" data-key="3">3</button>
+          <button class="keypad-btn" data-key="4">4</button>
+          <button class="keypad-btn" data-key="5">5</button>
+          <button class="keypad-btn" data-key="6">6</button>
+          <button class="keypad-btn" data-key="7">7</button>
+          <button class="keypad-btn" data-key="8">8</button>
+          <button class="keypad-btn" data-key="9">9</button>
+          <button class="keypad-btn keypad-clear" id="keypadClearBtn" title="Reset PIN">C</button>
+          <button class="keypad-btn" data-key="0">0</button>
+          <button class="keypad-btn keypad-backspace" id="keypadBackspaceBtn" title="Hapus Angka">⌫</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Text / OCR Result Modal -->
+  <div class="sync-modal-wrapper hidden" id="ocrModalWrapper">
+    <div class="sync-modal-backdrop" id="ocrModalBackdrop"></div>
+    <div class="sync-modal-card ocr-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="ocr-icon-circle">🔍</div>
+          <div>
+            <h3>Teks Terdeteksi (OCR)</h3>
+            <span class="sync-stage-text">Diekstraksi offline via Tesseract OCR Engine</span>
+          </div>
+        </div>
+        <button class="close-btn" id="ocrModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sync-modal-body ocr-modal-body">
+        <div class="ocr-loading-state hidden" id="ocrLoadingState">
+          <div class="loading-spinner"></div>
+          <span>Menganalisis dan membaca teks pada gambar...</span>
+        </div>
+        <div class="ocr-text-container" id="ocrTextContainer">
+          <textarea class="ocr-textarea" id="ocrTextarea" readonly placeholder="Tidak ada teks yang terdeteksi pada gambar ini."></textarea>
+        </div>
+      </div>
+      <div class="sync-modal-footer ocr-modal-footer">
+        <span class="ocr-char-count" id="ocrCharCount">0 karakter</span>
+        <button class="btn btn-primary" id="ocrCopyBtn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Salin Semua Teks</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Editor Modal (Google Photos Style) -->
+  <div class="sync-modal-wrapper hidden" id="editorModalWrapper">
+    <div class="sync-modal-backdrop" id="editorModalBackdrop"></div>
+    <div class="editor-modal-container">
+      <div class="editor-header">
+        <button class="icon-btn" id="editorCloseBtn" title="Batal Edit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <div class="editor-title-wrap">
+          <h3>Studio Edit Foto</h3>
+          <span class="editor-filename" id="editorFilename">photo.jpg</span>
+        </div>
+        <div class="editor-header-actions">
+          <button class="action-btn" id="editorResetBtn" title="Kembalikan ke Asli">Reset</button>
+          <button class="action-btn primary-btn" id="editorSaveCopyBtn" title="Simpan sebagai file foto baru">Simpan Salinan</button>
+        </div>
+      </div>
+
+      <div class="editor-viewport">
+        <div class="editor-canvas-wrap" id="editorCanvasWrap">
+          <img id="editorPreviewImg" class="editor-preview-img" src="" alt="Editor Preview" />
+        </div>
+      </div>
+
+      <div class="editor-toolbar">
+        <div class="editor-tabs">
+          <button class="editor-tab active" data-tab="tune" id="tabTuneBtn">🎨 Penyesuaian</button>
+          <button class="editor-tab" data-tab="transform" id="tabTransformBtn">📐 Pangkas & Putar</button>
+        </div>
+
+        <div class="editor-controls-panel" id="panelTune">
+          <div class="editor-quick-actions">
+            <button class="editor-chip-btn" id="editorAutoEnhanceBtn">✨ Auto Enhance</button>
+          </div>
+          <div class="editor-sliders-grid">
+            <div class="slider-group">
+              <div class="slider-label"><span>Kecerahan (Brightness)</span><span id="valBrightness">0</span></div>
+              <input type="range" min="-100" max="100" value="0" id="sliderBrightness" />
+            </div>
+            <div class="slider-group">
+              <div class="slider-label"><span>Kontras (Contrast)</span><span id="valContrast">0</span></div>
+              <input type="range" min="-100" max="100" value="0" id="sliderContrast" />
+            </div>
+            <div class="slider-group">
+              <div class="slider-label"><span>Saturasi (Saturation)</span><span id="valSaturation">0</span></div>
+              <input type="range" min="-100" max="100" value="0" id="sliderSaturation" />
+            </div>
+            <div class="slider-group">
+              <div class="slider-label"><span>Kehangatan (Warmth)</span><span id="valWarmth">0</span></div>
+              <input type="range" min="-100" max="100" value="0" id="sliderWarmth" />
+            </div>
+          </div>
+        </div>
+
+        <div class="editor-controls-panel hidden" id="panelTransform">
+          <div class="transform-buttons-row">
+            <button class="editor-action-pill" id="btnRotate90">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Putar 90°</span>
+            </button>
+            <button class="editor-action-pill" id="btnFlipH">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3m8-18h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 2v20"/></svg>
+              <span>Balik Horizontal</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -758,6 +1149,6 @@ CHANGELOG:
   <!-- Leaflet & Marker Clustering JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-  <script src="/app.js?v=20260919_110"></script>
+  <script src="/app.js?v=20261004_300"></script>
 </body>
 </html>
