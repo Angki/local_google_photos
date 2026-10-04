@@ -33,7 +33,7 @@ def parse_arguments():
         "--host",
         type=str,
         default=None,
-        help="Host address to bind server (default: 127.0.0.1 or HOST env)",
+        help="Host address to bind server (default: 0.0.0.0 or HOST env)",
     )
     parser.add_argument(
         "--port",
