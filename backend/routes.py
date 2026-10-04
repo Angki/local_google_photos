@@ -15,14 +15,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
 logger = logging.getLogger("APIRoutes")
 
 from backend.ai_engine import ai_engine
-from backend.ai_engine import ai_engine
-from backend.config import PORT, THUMBNAILS_DIR
+from backend.config import ALL_MEDIA_EXTENSIONS, PORT, SOURCE_DATA_DIR, THUMBNAILS_DIR, VIDEO_EXTENSIONS
 from backend.database import (
     get_db_connection,
     get_all_embeddings,
@@ -54,12 +53,15 @@ from backend.database import (
     unlock_photos,
     get_locked_count,
     update_photo_ocr,
+    update_photo_metadata,
+    upsert_photo,
     has_pin_configured,
     set_pin,
     verify_pin,
 )
-from backend.deduplicator import find_duplicates
-from backend.geo_resolver import backfill_missing_locations
+from backend.deduplicator import compute_quick_file_hash, find_duplicates
+from backend.geo_resolver import backfill_missing_locations, resolve_location
+from backend.metadata_parser import parse_photo_metadata
 from backend.motion_photo import detect_motion_photo
 from backend.network_helper import get_network_info
 from backend.ocr_engine import extract_ocr_text, is_ocr_available
@@ -209,6 +211,19 @@ class CategoriesResponse(BaseModel):
 class ScanControlResponse(BaseModel):
     success: bool
     status: Dict[str, Any]
+
+
+class DownloadZipRequest(BaseModel):
+    photo_ids: List[int] = Field(..., min_length=1, description="List of photo IDs to pack into ZIP archive")
+    archive_name: Optional[str] = Field("photos_export.zip", description="Filename for the downloaded ZIP")
+
+
+class UpdateMetadataRequest(BaseModel):
+    taken_at: Optional[str] = Field(None, description="ISO or standard timestamp (e.g. 2024-05-18 14:30:00)")
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0, description="Latitude between -90 and 90")
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0, description="Longitude between -180 and 180")
+    location_label: Optional[str] = Field(None, description="Custom location text or place name")
+    description: Optional[str] = Field(None, description="Caption or description of the photo")
 
 
 # ==============================================================================
@@ -1146,4 +1161,250 @@ def api_get_locked_photos(
         raise HTTPException(status_code=401, detail="Sesi akses terkunci kedaluwarsa. Silakan masukkan PIN ulang.")
     photos = get_photos(is_locked=True, limit=limit, offset=offset)
     return {"photos": photos, "count": len(photos)}
+
+
+# ==============================================================================
+# Direct Mobile / Web Wi-Fi Uploader
+# ==============================================================================
+@api_router.post("/api/upload", tags=["Media"], summary="Direct Upload Media Files")
+async def api_upload_media(
+    files: List[UploadFile] = File(...),
+):
+    """
+    Directly upload photos or videos from mobile (via Wi-Fi LAN) or desktop.
+    Files are saved into SOURCE_DATA_DIR / 'Photos from {year}', indexed into DB,
+    thumbnails generated, and broadcasted to active WebSocket clients.
+    """
+    import datetime
+    current_year = datetime.datetime.now().year
+    uploaded = []
+    errors = []
+
+    for file in files:
+        if not file.filename:
+            continue
+        safe_filename = Path(file.filename).name
+        ext = Path(safe_filename).suffix.lower()
+        if ext not in ALL_MEDIA_EXTENSIONS:
+            errors.append({"filename": safe_filename, "error": f"Ekstensi {ext} tidak didukung."})
+            continue
+
+        try:
+            target_dir = Path(SOURCE_DATA_DIR) / f"Photos from {current_year}"
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # Avoid overwrite collision
+            stem = Path(safe_filename).stem
+            cand_path = target_dir / safe_filename
+            counter = 1
+            while cand_path.exists():
+                cand_path = target_dir / f"{stem}_{counter}{ext}"
+                counter += 1
+
+            # Write file in chunks to disk
+            with open(cand_path, "wb") as f_out:
+                while chunk := await file.read(1024 * 1024):
+                    f_out.write(chunk)
+
+            file_size = cand_path.stat().st_size
+            media_type = "video" if ext in VIDEO_EXTENSIONS else "image"
+            mime_type, _ = mimetypes.guess_type(str(cand_path))
+            if not mime_type:
+                mime_type = "video/mp4" if media_type == "video" else "image/jpeg"
+
+            # Parse metadata
+            meta = parse_photo_metadata(cand_path, fallback_year=current_year)
+            meta_year = meta.get("taken_year")
+            if meta_year and meta_year != current_year and 2000 <= meta_year <= 2030:
+                proper_dir = Path(SOURCE_DATA_DIR) / f"Photos from {meta_year}"
+                proper_dir.mkdir(parents=True, exist_ok=True)
+                new_stem = cand_path.stem
+                new_path = proper_dir / f"{new_stem}{ext}"
+                cnt = 1
+                while new_path.exists():
+                    new_path = proper_dir / f"{new_stem}_{cnt}{ext}"
+                    cnt += 1
+                cand_path.rename(new_path)
+                cand_path = new_path
+
+            # Reverse geocode if coordinates present
+            geo_info = {}
+            if meta.get("has_geo") and meta.get("latitude") and meta.get("longitude"):
+                geo_info = resolve_location(meta["latitude"], meta["longitude"])
+
+            # Motion photo detection
+            is_live, motion_src = False, None
+            if media_type == "image":
+                is_live, motion_src = detect_motion_photo(cand_path)
+
+            quick_hash = compute_quick_file_hash(str(cand_path.resolve()))
+
+            record = {
+                "file_path": str(cand_path.resolve()),
+                "filename": cand_path.name,
+                "folder_year": cand_path.parent.name,
+                "file_size": file_size,
+                "media_type": media_type,
+                "mime_type": mime_type,
+                "width": 0,
+                "height": 0,
+                "taken_at": meta["taken_at"],
+                "taken_year": meta["taken_year"],
+                "taken_month": meta["taken_month"],
+                "taken_day": meta["taken_day"],
+                "taken_formatted": meta["taken_formatted"],
+                "latitude": meta["latitude"],
+                "longitude": meta["longitude"],
+                "altitude": meta["altitude"],
+                "has_geo": meta["has_geo"],
+                "description": meta["description"],
+                "people": str(meta["people"]),
+                "device_folder": meta["device_folder"],
+                "app_source": meta["app_source"],
+                "google_url": meta["google_url"],
+                "city": geo_info.get("city", ""),
+                "state": geo_info.get("state", ""),
+                "country": geo_info.get("country", ""),
+                "country_code": geo_info.get("country_code", ""),
+                "location_label": geo_info.get("location_label", ""),
+                "is_live_photo": 1 if is_live else 0,
+                "motion_video_path": motion_src,
+                "file_hash": quick_hash,
+            }
+            photo_id = upsert_photo(record)
+
+            # Generate thumbnail
+            thumb_rel, w, h = generate_thumbnail(photo_id, str(cand_path.resolve()), media_type=media_type)
+            if thumb_rel:
+                update_thumbnail_path(photo_id, thumb_rel, width=w, height=h)
+
+            uploaded_item = {
+                "id": photo_id,
+                "filename": cand_path.name,
+                "taken_year": meta["taken_year"],
+                "media_type": media_type,
+            }
+            uploaded.append(uploaded_item)
+
+            # Broadcast event to active WebSockets
+            try:
+                await ws_manager.broadcast({
+                    "type": "photo_added",
+                    "photo": uploaded_item,
+                })
+            except Exception as e:
+                logger.debug(f"Broadcast photo_added failed: {e}")
+
+        except Exception as e:
+            logger.error(f"Error processing upload for {safe_filename}: {e}", exc_info=True)
+            errors.append({"filename": safe_filename, "error": str(e)})
+
+    return {
+        "success": True,
+        "count": len(uploaded),
+        "uploaded": uploaded,
+        "errors": errors,
+    }
+
+
+# ==============================================================================
+# Batch ZIP Archive Downloader
+# ==============================================================================
+@api_router.post("/api/photos/download-zip", tags=["Media"], summary="Download Photos as ZIP Archive")
+def api_download_photos_zip(req: DownloadZipRequest):
+    """
+    Packs selected original photos/videos into a downloadable ZIP archive on the fly.
+    """
+    if not req.photo_ids:
+        raise HTTPException(status_code=400, detail="Tidak ada foto yang dipilih untuk diunduh.")
+
+    photos = []
+    for pid in req.photo_ids:
+        p = get_photo_by_id(pid)
+        if p and Path(p["file_path"]).is_file():
+            photos.append(p)
+
+    if not photos:
+        raise HTTPException(status_code=404, detail="File media yang dipilih tidak ditemukan di penyimpanan.")
+
+    import io
+    import zipfile
+
+    def zip_stream():
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            added_names = set()
+            for p in photos:
+                fp = Path(p["file_path"])
+                base_name = p.get("filename") or fp.name
+                arcname = base_name
+                cnt = 1
+                while arcname in added_names:
+                    p_stem = Path(base_name).stem
+                    p_ext = Path(base_name).suffix
+                    arcname = f"{p_stem}_{cnt}{p_ext}"
+                    cnt += 1
+                added_names.add(arcname)
+                zf.write(fp, arcname=arcname)
+        buf.seek(0)
+        while chunk := buf.read(64 * 1024):
+            yield chunk
+
+    filename = req.archive_name if req.archive_name.endswith(".zip") else f"{req.archive_name}.zip"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    }
+    return StreamingResponse(zip_stream(), media_type="application/zip", headers=headers)
+
+
+@api_router.get("/api/albums/{album_id}/download-zip", tags=["Albums"], summary="Download Album as ZIP Archive")
+def api_download_album_zip(album_id: int):
+    """Downloads all photos in the specified album as a single ZIP archive."""
+    album_photos = get_photos(album_id=album_id, limit=5000)
+    if not album_photos:
+        raise HTTPException(status_code=404, detail="Album kosong atau tidak ditemukan.")
+
+    pids = [p["id"] for p in album_photos]
+    albums = get_albums()
+    album_title = "album"
+    for alb in albums:
+        if alb.get("id") == album_id:
+            album_title = alb.get("name", "album")
+            break
+    safe_name = "".join(c for c in album_title if c.isalnum() or c in (" ", "-", "_")).strip() or "album"
+    return api_download_photos_zip(DownloadZipRequest(photo_ids=pids, archive_name=f"{safe_name}.zip"))
+
+
+# ==============================================================================
+# Manual Metadata & Location Editor
+# ==============================================================================
+@api_router.post("/api/photos/{photo_id}/metadata", tags=["Media"], summary="Update Photo Metadata & Location")
+def api_update_photo_metadata(photo_id: int, req: UpdateMetadataRequest):
+    """
+    Manually edits incorrect capture date/time, GPS coordinates, location label, or caption.
+    Automatically resolves offline reverse geocoding if coordinates are provided without label.
+    """
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto tidak ditemukan.")
+
+    location_label = req.location_label
+    if (req.latitude is not None and req.longitude is not None) and not location_label:
+        geo = resolve_location(req.latitude, req.longitude)
+        if geo and geo.get("location_label"):
+            location_label = geo["location_label"]
+
+    success = update_photo_metadata(
+        photo_id=photo_id,
+        taken_at=req.taken_at,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        location_label=location_label,
+        description=req.description,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Tidak ada pembaruan metadata yang valid.")
+
+    updated_photo = get_photo_by_id(photo_id)
+    return {"success": True, "photo": updated_photo}
 

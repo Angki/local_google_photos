@@ -1170,3 +1170,71 @@ def update_photo_ocr(photo_id: int, text: str) -> None:
     with get_db_connection() as conn:
         conn.execute("UPDATE photos SET ocr_text = ? WHERE id = ?", (text, photo_id))
         conn.commit()
+
+
+def update_photo_metadata(
+    photo_id: int,
+    taken_at: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    location_label: Optional[str] = None,
+    description: Optional[str] = None,
+) -> bool:
+    """Updates manual metadata fields: capture date/time, GPS coordinates, location label, or description."""
+    import datetime
+    updates = []
+    params = []
+
+    if taken_at is not None and taken_at.strip():
+        try:
+            clean_ts = taken_at.strip().replace("T", " ")
+            if len(clean_ts) == 10:
+                dt = datetime.datetime.strptime(clean_ts, "%Y-%m-%d")
+            else:
+                try:
+                    dt = datetime.datetime.fromisoformat(taken_at.strip())
+                except Exception:
+                    dt = datetime.datetime.strptime(clean_ts[:19], "%Y-%m-%d %H:%M:%S")
+
+            month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            m_str = month_names[dt.month - 1]
+            formatted_date = f"{m_str} {dt.day}, {dt.year}"
+
+            updates.extend([
+                "taken_at = ?",
+                "taken_year = ?",
+                "taken_month = ?",
+                "taken_day = ?",
+                "taken_formatted = ?"
+            ])
+            params.extend([
+                dt.strftime("%Y-%m-%d %H:%M:%S"),
+                dt.year,
+                dt.month,
+                dt.day,
+                formatted_date
+            ])
+        except Exception as e:
+            logger.warning(f"Could not parse custom taken_at '{taken_at}': {e}")
+
+    if latitude is not None and longitude is not None:
+        has_geo = bool(latitude != 0 or longitude != 0)
+        updates.extend(["latitude = ?", "longitude = ?", "has_geo = ?"])
+        params.extend([latitude, longitude, 1 if has_geo else 0])
+
+    if location_label is not None:
+        updates.append("location_label = ?")
+        params.append(location_label)
+
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+
+    if not updates:
+        return False
+
+    params.append(photo_id)
+    with get_db_connection() as conn:
+        conn.execute(f"UPDATE photos SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    return True

@@ -17,6 +17,7 @@ from backend.database import (
     add_photos_to_album,
     create_album,
     delete_photos,
+    delete_photos_from_disk_and_db,
     get_albums,
     get_db_connection,
     get_deleted_photos,
@@ -635,6 +636,71 @@ class TestGooglePhotosTakeout(unittest.TestCase):
                     resp = await client.get(f"/api/photos/{p_id}/ocr")
                     self.assertEqual(resp.status_code, 200)
                     self.assertIn("ocr_text", resp.json())
+        asyncio.run(_run())
+
+    def test_direct_upload_and_zip_and_metadata(self):
+        """Tests file upload via /api/upload, ZIP packaging via /api/photos/download-zip, and metadata editing."""
+        import io
+        import zipfile
+        from PIL import Image
+
+        # 1. Create a tiny test image in memory
+        img_byte_arr = io.BytesIO()
+        test_img = Image.new("RGB", (64, 64), color=(73, 109, 137))
+        test_img.save(img_byte_arr, format="PNG")
+        raw_bytes = img_byte_arr.getvalue()
+
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                # Test direct upload
+                files = [
+                    ("files", ("antigravity_test_upload.png", raw_bytes, "image/png"))
+                ]
+                upload_resp = await client.post("/api/upload", files=files)
+                self.assertEqual(upload_resp.status_code, 200)
+                upload_data = upload_resp.json()
+                self.assertTrue(upload_data.get("success"))
+                self.assertGreaterEqual(upload_data.get("count"), 1)
+                uploaded_photo = upload_data["uploaded"][0]
+                p_id = uploaded_photo["id"]
+
+                try:
+                    # Test manual metadata editing
+                    meta_payload = {
+                        "taken_at": "2023-08-17 09:30:00",
+                        "latitude": -6.2088,
+                        "longitude": 106.8456,
+                        "description": "Test Merdeka Landmark",
+                    }
+                    meta_resp = await client.post(f"/api/photos/{p_id}/metadata", json=meta_payload)
+                    self.assertEqual(meta_resp.status_code, 200)
+                    meta_data = meta_resp.json()
+                    self.assertTrue(meta_data.get("success"))
+                    self.assertEqual(meta_data["photo"]["taken_year"], 2023)
+                    self.assertEqual(meta_data["photo"]["taken_month"], 8)
+                    self.assertEqual(meta_data["photo"]["description"], "Test Merdeka Landmark")
+                    self.assertEqual(meta_data["photo"]["has_geo"], 1)
+
+                    # Test ZIP download
+                    zip_req = {
+                        "photo_ids": [p_id],
+                        "archive_name": "test_bundle.zip"
+                    }
+                    zip_resp = await client.post("/api/photos/download-zip", json=zip_req)
+                    self.assertEqual(zip_resp.status_code, 200)
+                    self.assertEqual(zip_resp.headers.get("content-type"), "application/zip")
+                    self.assertIn("test_bundle.zip", zip_resp.headers.get("content-disposition", ""))
+
+                    # Verify zip content structure
+                    zip_in_mem = io.BytesIO(zip_resp.content)
+                    with zipfile.ZipFile(zip_in_mem, "r") as zf:
+                        namelist = zf.namelist()
+                        self.assertEqual(len(namelist), 1)
+
+                finally:
+                    # Clean up database and file
+                    delete_photos_from_disk_and_db([p_id])
+
         asyncio.run(_run())
 
 

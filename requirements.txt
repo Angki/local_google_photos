@@ -4,6 +4,7 @@
 
 # Web Framework & Server
 fastapi>=0.103.0
+python-multipart>=0.0.12
 uvicorn[standard]>=0.23.0
 websockets>=13.0
 aiofiles>=23.0.0
