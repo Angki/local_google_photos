@@ -124,6 +124,21 @@ When exporting your photo library from Google Photos via Google Takeout:
 - **Time-Limited Session Token**: Issues a cryptographic 15-minute access token for private viewing.
 - **Seamless Management**: 1-click locking from multi-select toolbar or Lightbox, and instant unlocking back to the public gallery.
 
+### 📤 19. Direct Mobile & Web Wi-Fi Uploader
+- **Instant Cross-Device Upload**: Upload photos and videos directly from mobile phones over Wi-Fi LAN or desktop browsers without cloud intermediaries.
+- **Full-Window Drag-and-Drop**: Drop files anywhere onto the gallery interface to trigger upload progress dialog.
+- **Intelligent Organization**: Saves media automatically into `Photos from {year}` based on parsed EXIF timestamps, creates WebP thumbnails, and broadcasts live WebSocket events to all active devices.
+
+### 📦 20. 1-Click Batch ZIP Archive Downloader
+- **Bulk Media Export**: Pack selected photos or entire albums into an uncompressed/compressed ZIP archive on the fly.
+- **Zero-Disk Overhead**: Streams the archive directly into the browser using chunked streaming responses, preserving original file resolutions and names.
+- **Album & Selection Integration**: Accessible directly from the floating multi-selection toolbar and the album header.
+
+### ✏️ 21. Manual Metadata & Location Editor
+- **Capture Date & Time Correction**: Adjust incorrect or missing timestamps via datetime picker, updating timeline hierarchy and chronological sorting.
+- **Interactive Leaflet Map Pin Picker**: Click or drag a pin anywhere on the world map to set or modify GPS coordinates.
+- **Automated Reverse Geocoding**: Automatically enriches modified coordinates with city, state, country, and location labels.
+
 ---
 
 ## 🏗️ Architecture
