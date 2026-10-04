@@ -66,12 +66,63 @@ When exporting your photo library from Google Photos via Google Takeout:
 - **Permanent Purge**: Hard delete physically wipes media files, companion JSON files, and thumbnails from disk with safety confirmation.
 - **Empty Trash**: One-click "Kosongkan Sampah" button to clean up all deleted items.
 
-### ⚡ 8. High-Speed Media Processing & Enterprise Observability
+### 🎞️ 8. "On This Day" Throwbacks & Memories Carousel
+- Automatically scans your archive for historical moments taken on the current calendar day (e.g. *1 year ago*, *3 years ago*, *5 years ago*).
+- Displays an interactive top carousel with gradient backdrops and count pills.
+- Clicking any memory tile launches the Lightbox at that historical memory.
+
+### 🧹 9. Smart Duplicate Detector & Safe Storage Cleanup
+- **Exact & Near-Duplicate Detection**: Combines fast chunked sha256 hashing and fuzzy timestamp clustering.
+- **Dedicated View (`👯 Duplicates`)**: Categorizes duplicates into groups, highlighting size savings.
+- **1-Click Smart Auto-Select**: Automatically selects duplicates while preserving the oldest or highest-resolution primary copy.
+- **Safe Soft-Delete**: Moves redundant copies to the safe Trash system without risk of data loss.
+
+### 🎬 10. Apple & Samsung Live Photo / Motion Photo Playback
+- **Embedded Motion Extraction**: Automatically parses JPEG micro-video payloads (XMP `GCamera:MicroVideoOffset` and Apple paired `.mov` files).
+- **Interactive Playback**: Toggle the `LIVE` button in Lightbox or press `L` to watch the 3-second live moment before returning to high-res still.
+
+### 📱 11. Progressive Web App (PWA) Offline-Ready & App Install
+- Full `manifest.webmanifest` and Service Worker (`sw.js`).
+- Installable directly to Windows Desktop, macOS Dock, or Android/iOS homescreen.
+- Caches UI assets and icons for immediate launch.
+
+### 🎨 12. In-Browser Photo Editing Suite (Studio)
+- **Tune & Adjustments**: Real-time 60fps sliders for Brightness, Contrast, Saturation, and Color Warmth.
+- **✨ Auto-Enhance**: 1-click automatic contrast and color tone optimization.
+- **Transform**: 90° rotation and horizontal flip.
+- **Non-Destructive Saving**: Save as a new copy (`filename_edited_timestamp.jpg`) or safely overwrite with atomic backup.
+
+### 👁️ 13. Real-Time Hot Folder Watcher
+- Monitored continuously via Python `watchdog` on `SOURCE_DATA_DIR`.
+- Instantly ingests new photos or videos dropped into the folder without needing manual re-indexing.
+- Automatically generates WebP thumbnails and broadcasts real-time WebSocket toast notifications.
+
+### 🎥 14. Cinematic Story Mode & Ken Burns Slideshow
+- Smooth slow pan/zoom animation on photo transitions (`ken-burns` keyframe animation).
+- Toggle auto-play with `Space` or top bar button.
+
+### ⚡ 15. High-Speed Media Processing & Enterprise Observability
 - **Compressed WebP Thumbnails**: On-demand and batch background generation for instant loading.
 - **Video Playback with Seeking**: Custom HTTP Range streaming handler supporting `.mp4`, `.mov`, `.m4v`, `.webm`, `.mkv`, and `.3gp`.
 - **FFmpeg Frame Thumbnails**: Automatically extracts representative video frames for video previews.
+- **Reverse Geocoding**: Automatically turns raw GPS coordinates into human-readable city, state, and country names.
 - **Observability**: Structured request latency logs with correlation IDs (`X-Request-ID`) and process times (`X-Process-Time`).
-- **Non-Blocking Background Worker**: Live indexing progress displayed via real-time WebSocket with automatic HTTP polling fallback.
+
+### 🔍 16. Live Text & OCR Search (Google Lens Style)
+- **100% Offline Optical Character Recognition**: Powered by local Tesseract OCR engine without external cloud APIs.
+- **Full-Text Search Indexing**: Extracts text from receipts, documents, screenshots, signs, and labels directly into SQLite full-text and semantic queries (`ocr_text LIKE ?`).
+- **Interactive Lightbox Scanner**: Click the OCR button (`🔍`) in the Lightbox toolbar to extract text on-the-fly and copy it with 1-click in the result modal.
+
+### 📱 17. Home Wi-Fi LAN Mode & Mobile Quick-Access QR Code
+- **Automatic Local IP Detection**: Detects your computer's local Wi-Fi IPv4 address (e.g. `http://192.168.18.27:8000`).
+- **Zero-Dependency SVG QR Code**: Generates crisp, scalable vector QR codes on-the-fly without third-party web services.
+- **Instant Cross-Device Browsing**: Scan with any iPhone, iPad, Android phone, or tablet on the same Wi-Fi network to browse your archive or install as a PWA app.
+
+### 🔒 18. Locked Folder with 4-Digit PIN (Private Vault)
+- **Zero-Leakage Privacy**: Photos marked as locked (`is_locked = 1`) are completely hidden from the main timeline, "On This Day" memories, search suggestions, and the Photo Map.
+- **Interactive Numeric Keypad**: Beautiful 4-digit PIN setup and authentication modal with visual dot feedback.
+- **Time-Limited Session Token**: Issues a cryptographic 15-minute access token for private viewing.
+- **Seamless Management**: 1-click locking from multi-select toolbar or Lightbox, and instant unlocking back to the public gallery.
 
 ---
 
