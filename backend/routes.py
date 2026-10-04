@@ -28,6 +28,7 @@ from backend.database import (
     get_all_embeddings,
     get_category_counts,
     get_library_stats,
+    get_storage_analytics,
     get_photo_by_id,
     get_photos,
     get_geo_points,
@@ -883,6 +884,12 @@ def get_stats():
     """Returns general library statistics."""
     stats = get_library_stats()
     return {"stats": stats}
+
+
+@api_router.get("/api/analytics/storage", tags=["System"], summary="Storage & Media Analytics")
+def get_storage_analytics_route():
+    """Returns storage analytics, breakdown by type, and largest files."""
+    return get_storage_analytics()
 
 
 # ==============================================================================

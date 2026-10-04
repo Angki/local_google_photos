@@ -24,6 +24,7 @@ from backend.database import (
     get_library_stats,
     get_photo_by_id,
     get_photos,
+    get_storage_analytics,
     get_timeline_hierarchy,
     init_db,
     restore_photos,
@@ -732,6 +733,36 @@ class TestGooglePhotosTakeout(unittest.TestCase):
                     # Clean up database and file
                     delete_photos_from_disk_and_db([p_id])
 
+        asyncio.run(_run())
+
+    def test_storage_analytics_database(self):
+        """Verifies that get_storage_analytics returns proper schema and non-negative numbers."""
+        analytics = get_storage_analytics()
+        self.assertIn("stats", analytics)
+        self.assertIn("largest_files", analytics)
+        self.assertIn("yearly_breakdown", analytics)
+        stats = analytics["stats"]
+        self.assertIn("total_bytes", stats)
+        self.assertIn("total_items", stats)
+        self.assertIn("image_bytes", stats)
+        self.assertIn("video_bytes", stats)
+        self.assertIn("screenshot_bytes", stats)
+        self.assertGreater(stats["total_items"], 0)
+        self.assertGreater(stats["total_bytes"], 0)
+        self.assertIsInstance(analytics["largest_files"], list)
+        self.assertIsInstance(analytics["yearly_breakdown"], list)
+
+    def test_storage_analytics_api_endpoint(self):
+        """Tests the /api/analytics/storage endpoint via ASGI client."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/analytics/storage")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("stats", data)
+                self.assertIn("largest_files", data)
+                self.assertIn("yearly_breakdown", data)
+                self.assertGreater(data["stats"]["total_bytes"], 0)
         asyncio.run(_run())
 
 

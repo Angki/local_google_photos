@@ -542,6 +542,47 @@ def get_library_stats() -> Dict[str, Any]:
         return dict(row) if row else {}
 
 
+def get_storage_analytics() -> Dict[str, Any]:
+    """Returns storage analytics including total footprint, image vs video bytes,
+    top largest files, and screenshots count."""
+    with get_db_connection() as conn:
+        stats = conn.execute("""
+            SELECT
+                COUNT(*) as total_items,
+                COALESCE(SUM(file_size), 0) as total_bytes,
+                COALESCE(SUM(CASE WHEN media_type = 'image' THEN 1 ELSE 0 END), 0) as image_count,
+                COALESCE(SUM(CASE WHEN media_type = 'image' THEN file_size ELSE 0 END), 0) as image_bytes,
+                COALESCE(SUM(CASE WHEN media_type = 'video' THEN 1 ELSE 0 END), 0) as video_count,
+                COALESCE(SUM(CASE WHEN media_type = 'video' THEN file_size ELSE 0 END), 0) as video_bytes,
+                COALESCE(SUM(CASE WHEN ai_category = 'screenshots' THEN 1 ELSE 0 END), 0) as screenshot_count,
+                COALESCE(SUM(CASE WHEN ai_category = 'screenshots' THEN file_size ELSE 0 END), 0) as screenshot_bytes
+            FROM photos
+            WHERE deleted = 0;
+        """).fetchone()
+
+        largest_rows = conn.execute("""
+            SELECT id, filename, file_size, media_type, folder_year, taken_formatted
+            FROM photos
+            WHERE deleted = 0 AND file_size > 0
+            ORDER BY file_size DESC
+            LIMIT 30;
+        """).fetchall()
+
+        yearly_rows = conn.execute("""
+            SELECT folder_year, COUNT(*) as count, COALESCE(SUM(file_size), 0) as total_bytes
+            FROM photos
+            WHERE deleted = 0 AND folder_year IS NOT NULL AND folder_year != ''
+            GROUP BY folder_year
+            ORDER BY folder_year DESC;
+        """).fetchall()
+
+        return {
+            "stats": dict(stats) if stats else {},
+            "largest_files": [dict(r) for r in largest_rows],
+            "yearly_breakdown": [dict(r) for r in yearly_rows],
+        }
+
+
 def get_geo_points() -> List[Dict[str, Any]]:
     """Returns essential coordinates and metadata for all active geotagged photos."""
     with get_db_connection() as conn:
