@@ -382,6 +382,37 @@ class TestGooglePhotosTakeout(unittest.TestCase):
                     mock_start.assert_called_once()
             asyncio.run(_run())
 
+    def test_media_download_content_disposition(self):
+        """Verifies ?download=1 query parameter adds Content-Disposition: attachment header."""
+        import tempfile
+        from PIL import Image
+        from backend.scanner import index_single_media_file
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir) / "test_download_photo.jpg"
+            img = Image.new("RGB", (100, 100), color=(120, 180, 240))
+            img.save(tmp_path, "JPEG")
+
+            photo_id = index_single_media_file(tmp_path)
+            self.assertIsNotNone(photo_id)
+
+            async def _run():
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                    # 1. With download=1
+                    resp_dl = await client.get(f"/api/media/{photo_id}?download=1")
+                    self.assertEqual(resp_dl.status_code, 200)
+                    cd = resp_dl.headers.get("content-disposition", "")
+                    self.assertIn("attachment", cd)
+                    self.assertIn("test_download_photo.jpg", cd)
+
+                    # 2. Normal viewing without download parameter
+                    resp_view = await client.get(f"/api/media/{photo_id}")
+                    self.assertEqual(resp_view.status_code, 200)
+                    cd_view = resp_view.headers.get("content-disposition", "")
+                    self.assertNotIn("attachment", cd_view)
+
+            asyncio.run(_run())
+
     def test_memories_endpoint(self):
         """Verifies the /api/memories endpoint returns structured On This Day groups."""
         async def _run():

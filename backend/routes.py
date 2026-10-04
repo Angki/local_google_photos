@@ -11,6 +11,7 @@ import logging
 import mimetypes
 import os
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -494,7 +495,7 @@ def api_get_video_thumbnails_status():
 
 
 @api_router.get("/api/media/{photo_id}", tags=["Media"], summary="Stream Media File")
-async def get_media(photo_id: int, request: Request):
+async def get_media(photo_id: int, request: Request, download: bool = False):
     """
     Streams original image or video file.
     Supports RFC-compliant HTTP Range requests (206 Partial Content) for fluid video seeking.
@@ -590,12 +591,21 @@ async def get_media(photo_id: int, request: Request):
             "Content-Length": str(content_length),
             "Content-Type": mime_type,
         }
+        if download:
+            filename_quoted = urllib.parse.quote(file_path.name)
+            headers["Content-Disposition"] = f'attachment; filename="{file_path.name}"; filename*=UTF-8\'\'{filename_quoted}'
+
         return StreamingResponse(iterfile(start, content_length), status_code=206, headers=headers)
+
+    headers = {"Accept-Ranges": "bytes"}
+    if download:
+        filename_quoted = urllib.parse.quote(file_path.name)
+        headers["Content-Disposition"] = f'attachment; filename="{file_path.name}"; filename*=UTF-8\'\'{filename_quoted}'
 
     return FileResponse(
         file_path,
         media_type=mime_type,
-        headers={"Accept-Ranges": "bytes"},
+        headers=headers,
     )
 
 

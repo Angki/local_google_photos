@@ -275,6 +275,24 @@
     mobileGridLabel: document.getElementById("mobileGridLabel"),
     mobileGridNextBtn: document.getElementById("mobileGridNextBtn"),
 
+    // Media Share Controller (WhatsApp, Instagram, Telegram, Native & Download)
+    shareSelectedBtn: document.getElementById("shareSelectedBtn"),
+    lightboxShareBtn: document.getElementById("lightboxShareBtn"),
+    shareModalWrapper: document.getElementById("shareModalWrapper"),
+    shareModalBackdrop: document.getElementById("shareModalBackdrop"),
+    shareModalSubtitle: document.getElementById("shareModalSubtitle"),
+    shareModalCloseBtn: document.getElementById("shareModalCloseBtn"),
+    sharePreviewThumb: document.getElementById("sharePreviewThumb"),
+    shareTypeBadge: document.getElementById("shareTypeBadge"),
+    sharePreviewFilename: document.getElementById("sharePreviewFilename"),
+    sharePreviewDate: document.getElementById("sharePreviewDate"),
+    sharePreviewRes: document.getElementById("sharePreviewRes"),
+    shareNativeBtn: document.getElementById("shareNativeBtn"),
+    shareWhatsAppBtn: document.getElementById("shareWhatsAppBtn"),
+    shareTelegramBtn: document.getElementById("shareTelegramBtn"),
+    shareDownloadBtn: document.getElementById("shareDownloadBtn"),
+    shareCopyLinkBtn: document.getElementById("shareCopyLinkBtn"),
+
     // Locked Folder (Phase 9)
     lockedChip: document.getElementById("lockedChip"),
     lockedBadgeCount: document.getElementById("lockedBadgeCount"),
@@ -1757,6 +1775,12 @@
     if (elements.lightboxDownloadBtn) {
       elements.lightboxDownloadBtn.addEventListener("click", downloadLightboxPhoto);
     }
+    if (elements.lightboxShareBtn) {
+      elements.lightboxShareBtn.addEventListener("click", () => {
+        const photo = state.photos[state.lightboxIndex];
+        if (photo) openShareModal(photo);
+      });
+    }
     if (elements.lightboxEditBtn) {
       elements.lightboxEditBtn.addEventListener("click", () => openPhotoEditor());
     }
@@ -1792,6 +1816,14 @@
         }
       }
 
+      // Close share modal if open
+      if (elements.shareModalWrapper && !elements.shareModalWrapper.classList.contains("hidden")) {
+        if (e.key === "Escape") {
+          closeShareModal();
+          return;
+        }
+      }
+
       if (!elements.lightboxModal.classList.contains("hidden")) {
         if (e.key === "Escape") closeLightbox();
         else if (e.key === "ArrowLeft") navigateLightbox(-1);
@@ -1804,6 +1836,9 @@
           toggleLightboxFavorite();
         } else if (e.key.toLowerCase() === "d") {
           downloadLightboxPhoto();
+        } else if (e.key.toLowerCase() === "s") {
+          const photo = state.photos[state.lightboxIndex];
+          if (photo) openShareModal(photo);
         } else if (e.key.toLowerCase() === "e") {
           openPhotoEditor();
         } else if (e.key.toLowerCase() === "l") {
@@ -1840,6 +1875,9 @@
       elements.favoriteSelectedBtn.addEventListener("click", () => favoriteSelectedPhotos(true));
     }
     elements.deleteSelectedBtn.addEventListener("click", deleteSelectedPhotos);
+    if (elements.shareSelectedBtn) {
+      elements.shareSelectedBtn.addEventListener("click", shareSelectedPhotos);
+    }
     if (elements.lightboxDeleteBtn) {
       elements.lightboxDeleteBtn.addEventListener("click", deleteCurrentLightboxPhoto);
     }
@@ -2103,6 +2141,29 @@
     }
     if (elements.tabLanTailscaleBtn) {
       elements.tabLanTailscaleBtn.addEventListener("click", () => setLanModalMode("tailscale"));
+    }
+
+    // --- Media Share Sheet Events (WhatsApp, Instagram, Telegram, Native & Save) ---
+    if (elements.shareModalCloseBtn) {
+      elements.shareModalCloseBtn.addEventListener("click", closeShareModal);
+    }
+    if (elements.shareModalBackdrop) {
+      elements.shareModalBackdrop.addEventListener("click", closeShareModal);
+    }
+    if (elements.shareNativeBtn) {
+      elements.shareNativeBtn.addEventListener("click", shareViaNativeApp);
+    }
+    if (elements.shareWhatsAppBtn) {
+      elements.shareWhatsAppBtn.addEventListener("click", shareToWhatsApp);
+    }
+    if (elements.shareTelegramBtn) {
+      elements.shareTelegramBtn.addEventListener("click", shareToTelegram);
+    }
+    if (elements.shareDownloadBtn) {
+      elements.shareDownloadBtn.addEventListener("click", shareDownloadMedia);
+    }
+    if (elements.shareCopyLinkBtn) {
+      elements.shareCopyLinkBtn.addEventListener("click", shareCopyMediaLink);
     }
 
     // --- Google Photos Grid Density & Pinch Zoom Events ---
@@ -3903,6 +3964,189 @@
     navigator.clipboard.writeText(elements.lanUrlInput.value)
       .then(() => showToast(`URL ${modeLabel} berhasil disalin ke clipboard! 📋`))
       .catch(() => showToast("Gagal menyalin URL"));
+  }
+
+  // --------------------------------------------------------------------------
+  // Media Share Sheet Controller (WhatsApp, Instagram, Telegram, Native & Save)
+  // --------------------------------------------------------------------------
+  let currentSharePhoto = null;
+
+  function openShareModal(photo) {
+    if (!photo) {
+      showToast("Pilih foto atau video untuk dibagikan", null, null, 2500);
+      return;
+    }
+    currentSharePhoto = photo;
+
+    if (elements.sharePreviewThumb) {
+      elements.sharePreviewThumb.src = `/api/thumbnail/${photo.id}`;
+      elements.sharePreviewThumb.alt = photo.filename || "Media Preview";
+    }
+
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+
+    if (elements.shareTypeBadge) {
+      elements.shareTypeBadge.textContent = isVideo ? "🎬 VIDEO" : "📷 FOTO";
+      elements.shareTypeBadge.style.background = isVideo ? "rgba(234, 67, 53, 0.9)" : "rgba(26, 115, 232, 0.9)";
+    }
+
+    if (elements.sharePreviewFilename) {
+      elements.sharePreviewFilename.textContent = photo.filename || `media_${photo.id}`;
+      elements.sharePreviewFilename.title = photo.filename || "";
+    }
+
+    if (elements.sharePreviewDate) {
+      elements.sharePreviewDate.textContent = photo.taken_formatted || "Tanggal tidak diketahui";
+    }
+
+    if (elements.sharePreviewRes) {
+      const dim = (photo.width && photo.height) ? `${photo.width} × ${photo.height}` : "";
+      const sz = photo.file_size ? formatBytes(photo.file_size) : "";
+      elements.sharePreviewRes.textContent = [dim, sz].filter(Boolean).join(" • ");
+    }
+
+    if (elements.shareModalSubtitle) {
+      elements.shareModalSubtitle.textContent = isVideo
+        ? "Bagikan video ini langsung ke WhatsApp, Telegram, atau simpan ke galeri ponsel."
+        : "Bagikan foto ini langsung ke WhatsApp, Telegram, Instagram, atau aplikasi lain.";
+    }
+
+    if (elements.shareModalWrapper) {
+      elements.shareModalWrapper.classList.remove("hidden");
+    }
+  }
+
+  function closeShareModal() {
+    if (elements.shareModalWrapper) {
+      elements.shareModalWrapper.classList.add("hidden");
+    }
+  }
+
+  function shareSelectedPhotos() {
+    if (state.selectedPhotos.size === 0) {
+      showToast("Pilih setidaknya satu media untuk dibagikan", null, null, 2500);
+      return;
+    }
+    const firstId = Array.from(state.selectedPhotos)[0];
+    const photo = state.photos.find((p) => p.id === firstId);
+    if (photo) {
+      openShareModal(photo);
+      if (state.selectedPhotos.size > 1) {
+        showToast(`Membuka menu share untuk item pertama dari ${state.selectedPhotos.size} media terpilih.`, null, null, 3000);
+      }
+    }
+  }
+
+  async function shareViaNativeApp() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
+    const shareTitle = photo.filename || (isVideo ? "Video Google Photos" : "Foto Google Photos");
+    const shareText = `Lihat ${isVideo ? "video" : "foto"} "${photo.filename || "media"}":`;
+
+    if (!navigator.share) {
+      showToast("Browser tidak mendukung menu share bawaan ponsel. Gunakan WhatsApp, Telegram, atau Simpan ke Galeri di bawah.", null, null, 4000);
+      return;
+    }
+
+    const origBtnHtml = elements.shareNativeBtn ? elements.shareNativeBtn.innerHTML : "";
+    if (elements.shareNativeBtn) {
+      elements.shareNativeBtn.innerHTML = '<div class="spinner-small" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Memproses berkas...';
+    }
+
+    try {
+      let sharedFile = false;
+      if (navigator.canShare) {
+        try {
+          const res = await fetch(`/api/media/${photo.id}?download=1`);
+          if (res.ok) {
+            const blob = await res.blob();
+            const fallbackExt = isVideo ? "mp4" : "jpg";
+            const fname = photo.filename || `media_${photo.id}.${fallbackExt}`;
+            const mimeType = blob.type || (isVideo ? "video/mp4" : "image/jpeg");
+            const file = new File([blob], fname, { type: mimeType });
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: shareTitle,
+              });
+              sharedFile = true;
+              showToast("Berhasil dibagikan! 🚀");
+            }
+          }
+        } catch (fileErr) {
+          console.warn("File sharing not permitted or cancelled, falling back to link share:", fileErr);
+        }
+      }
+
+      if (!sharedFile) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: mediaUrl,
+        });
+        showToast("Berhasil dibagikan! 🚀");
+      }
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.error("Native share failed:", err);
+        showToast("Gagal membagikan: " + (err.message || "Batal"));
+      }
+    } finally {
+      if (elements.shareNativeBtn) {
+        elements.shareNativeBtn.innerHTML = origBtnHtml;
+      }
+    }
+  }
+
+  function shareToWhatsApp() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
+    const message = `Lihat ${isVideo ? "video" : "foto"} "${photo.filename}":\n${mediaUrl}`;
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+    showToast("Membuka WhatsApp... 💬");
+  }
+
+  function shareToTelegram() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
+    const message = `Lihat ${isVideo ? "video" : "foto"} "${photo.filename}"`;
+    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(mediaUrl)}&text=${encodeURIComponent(message)}`;
+    window.open(tgUrl, "_blank", "noopener,noreferrer");
+    showToast("Membuka Telegram... ✈️");
+  }
+
+  function shareDownloadMedia() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    const downloadUrl = `/api/media/${photo.id}?download=1`;
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = photo.filename || `media_${photo.id}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast("Mengunduh ke galeri HP! Siap dibagikan ke Instagram atau aplikasi lain 📸✨", null, null, 3500);
+  }
+
+  function shareCopyMediaLink() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(mediaUrl)
+        .then(() => showToast("Tautan langsung berhasil disalin ke clipboard! 📋"))
+        .catch(() => window.prompt("Salin tautan media:", mediaUrl));
+    } else {
+      window.prompt("Salin tautan media:", mediaUrl);
+    }
   }
 
   // --------------------------------------------------------------------------

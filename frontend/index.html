@@ -220,6 +220,16 @@ CHANGELOG:
         </svg>
         <span>Add to Album</span>
       </button>
+      <button class="action-btn" id="shareSelectedBtn" title="Bagikan Foto Terpilih (WA, IG, dll)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+        <span>Bagikan</span>
+      </button>
       <button class="action-btn" id="downloadZipSelectedBtn" title="Download Selected as ZIP">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -643,6 +653,15 @@ CHANGELOG:
         <button class="lightbox-btn" id="lightboxSlideshowBtn" title="Tayangan Slide (Space)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </button>
+        <button class="lightbox-btn" id="lightboxShareBtn" title="Bagikan Foto / Video (WA, IG, dll) (s)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
           </svg>
         </button>
         <button class="lightbox-btn" id="lightboxDownloadBtn" title="Unduh Media Asli (d)">
@@ -1079,6 +1098,125 @@ CHANGELOG:
             <div class="shortcut-keys"><kbd>E</kbd></div>
             <span class="shortcut-desc">Buka studio edit foto (Crop, Rotate, Enhance)</span>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Media Share Modal (WhatsApp, Instagram, Telegram, Native Share & Download) -->
+  <div class="sync-modal-wrapper hidden" id="shareModalWrapper">
+    <div class="sync-modal-backdrop" id="shareModalBackdrop"></div>
+    <div class="sync-modal-card share-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="share-icon-circle">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+          </div>
+          <div>
+            <h3>Bagikan Media</h3>
+            <span class="sync-stage-text" id="shareModalSubtitle">Bagikan foto atau video ke aplikasi favorit Anda</span>
+          </div>
+        </div>
+        <button class="close-btn" id="shareModalCloseBtn" title="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sync-modal-body share-modal-body">
+        <!-- Media Preview Card -->
+        <div class="share-preview-card">
+          <div class="share-preview-thumb-wrap">
+            <img class="share-preview-thumb" id="sharePreviewThumb" src="" alt="Preview">
+            <span class="share-type-badge hidden" id="shareTypeBadge">VIDEO</span>
+          </div>
+          <div class="share-preview-meta">
+            <div class="share-preview-filename" id="sharePreviewFilename">photo.jpg</div>
+            <div class="share-preview-date" id="sharePreviewDate">10 Oktober 2024</div>
+            <div class="share-preview-res" id="sharePreviewRes">1920 × 1080 • 2.4 MB</div>
+          </div>
+        </div>
+
+        <!-- Primary Native App Share (WA, IG, Telegram, etc.) -->
+        <div class="share-actions-grid">
+          <!-- Native OS Share Button -->
+          <button type="button" class="share-action-tile highlight-tile" id="shareNativeBtn">
+            <div class="share-tile-icon native-share-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                <polyline points="16 6 12 2 8 6"></polyline>
+                <line x1="12" y1="2" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <div class="share-tile-info">
+              <span class="share-tile-title">Bagikan ke Aplikasi HP</span>
+              <span class="share-tile-desc">WhatsApp, Instagram Stories/Feed, Telegram, dll.</span>
+            </div>
+            <span class="share-chip-tag">Rekomendasi</span>
+          </button>
+
+          <!-- WhatsApp Direct -->
+          <button type="button" class="share-action-tile" id="shareWhatsAppBtn">
+            <div class="share-tile-icon whatsapp-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm5.78 14.15c-.24.68-1.39 1.3-1.92 1.38-.5.08-1.13.12-3.28-.77-2.73-1.13-4.49-3.9-4.63-4.08-.13-.19-1.11-1.48-1.11-2.82 0-1.34.7-2 .95-2.27.25-.27.55-.34.73-.34.19 0 .37.01.53.01.17 0 .4.06.62.59.24.57.82 2.01.89 2.16.07.15.12.33.02.53-.1.2-.15.33-.3.51-.15.18-.32.4-.45.54-.15.15-.31.32-.13.63.18.31.8 1.32 1.72 2.14 1.18 1.05 2.18 1.38 2.49 1.53.31.15.49.13.67-.08.18-.21.78-.91.99-1.22.21-.31.42-.26.7-.16.28.1 1.79.84 2.1 1 .31.15.52.23.6.35.08.13.08.74-.16 1.42z"/>
+              </svg>
+            </div>
+            <div class="share-tile-info">
+              <span class="share-tile-title">Kirim ke WhatsApp</span>
+              <span class="share-tile-desc">Kirim foto & tautan langsung ke obrolan atau status</span>
+            </div>
+          </button>
+
+          <!-- Telegram Direct -->
+          <button type="button" class="share-action-tile" id="shareTelegramBtn">
+            <div class="share-tile-icon telegram-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+              </svg>
+            </div>
+            <div class="share-tile-info">
+              <span class="share-tile-title">Kirim ke Telegram</span>
+              <span class="share-tile-desc">Kirim foto ke obrolan atau grup Telegram</span>
+            </div>
+          </button>
+
+          <!-- Save to Mobile Gallery / Download -->
+          <button type="button" class="share-action-tile" id="shareDownloadBtn">
+            <div class="share-tile-icon download-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <div class="share-tile-info">
+              <span class="share-tile-title">Simpan ke Galeri HP (Untuk IG / TikTok)</span>
+              <span class="share-tile-desc">Unduh resolusi penuh agar langsung muncul di Galeri / Instagram</span>
+            </div>
+          </button>
+
+          <!-- Copy Link -->
+          <button type="button" class="share-action-tile" id="shareCopyLinkBtn">
+            <div class="share-tile-icon copy-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </div>
+            <div class="share-tile-info">
+              <span class="share-tile-title">Salin Tautan Media</span>
+              <span class="share-tile-desc">Salin URL foto langsung ke clipboard</span>
+            </div>
+          </button>
         </div>
       </div>
     </div>
