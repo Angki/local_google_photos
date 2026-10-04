@@ -3957,10 +3957,17 @@ body.is-selecting .photo-tile .select-overlay,
 }
 
 @media (max-width: 768px) {
+  :root {
+    --header-height: 56px;
+    --categories-height: 44px;
+  }
+
   /* App Header */
   .app-header {
-    height: 56px;
+    height: auto;
+    min-height: 56px;
     padding: 0 10px;
+    padding-top: max(env(safe-area-inset-top, 0px), 6px);
     gap: 6px;
   }
 
@@ -4024,6 +4031,10 @@ body.is-selecting .photo-tile .select-overlay,
     display: none;
   }
 
+  #gridDensityDropdown {
+    display: none; /* On mobile, grid density is controlled via the floating FAB */
+  }
+
   .icon-btn {
     width: 36px;
     height: 36px;
@@ -4066,6 +4077,7 @@ body.is-selecting .photo-tile .select-overlay,
 
   .timeline-container {
     padding: 0 4px;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
   .timeline-section {
@@ -4095,15 +4107,19 @@ body.is-selecting .photo-tile .select-overlay,
   /* Timeline Scrubber on Mobile */
   .timeline-scrubber {
     right: 2px;
-    opacity: 0.35;
-    transform: scale(0.85);
+    width: 36px;
+    opacity: 0.25;
+    transform: scale(0.9);
     transform-origin: right center;
     z-index: 30;
+    transition: opacity var(--transition-fast), width var(--transition-fast);
   }
 
   .timeline-scrubber:active,
-  .timeline-scrubber.active {
+  .timeline-scrubber.active,
+  .timeline-scrubber:hover {
     opacity: 1;
+    width: 54px;
   }
 
   /* Selection Action Bar */
@@ -4119,6 +4135,15 @@ body.is-selecting .photo-tile .select-overlay,
 
   .selection-right {
     gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: calc(100vw - 120px);
+    padding: 2px 0;
+  }
+
+  .selection-right::-webkit-scrollbar {
+    display: none;
   }
 
   .action-btn {
@@ -4137,22 +4162,97 @@ body.is-selecting .photo-tile .select-overlay,
     padding: 0;
   }
 
+  .lightbox-header {
+    height: auto;
+    min-height: 52px;
+    padding: 6px 10px;
+    padding-top: max(env(safe-area-inset-top, 0px), 8px);
+    gap: 6px;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .lightbox-meta-summary {
+    flex: 1;
+    min-width: 0;
+    align-items: flex-start;
+    padding-left: 2px;
+  }
+
+  .lightbox-date {
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+  }
+
+  .lightbox-filename {
+    font-size: 0.68rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+  }
+
+  .lightbox-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: calc(100vw - 180px);
+    padding: 2px 0;
+  }
+
+  .lightbox-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lightbox-btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    flex-shrink: 0;
+  }
+
+  .lightbox-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
   .lightbox-nav-btn {
     display: none; /* Native touch swipe is primary and much smoother on phone screens */
   }
 
-  .lightbox-drawer {
+  /* Info Sidebar as Native Bottom-Sheet on Mobile */
+  .info-sidebar {
     width: 100%;
     max-width: 100%;
     height: 75vh;
+    max-height: 80vh;
     top: auto;
     bottom: 0;
-    border-radius: 20px 20px 0 0;
+    left: 0;
+    right: 0;
+    border-radius: 24px 24px 0 0;
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
     transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  .lightbox-drawer.open {
+  .info-sidebar.open {
+    right: 0;
     transform: translateY(0);
+  }
+
+  .sidebar-header {
+    height: 52px;
+    padding: 0 18px;
   }
 
   /* Modals on Mobile */
@@ -4418,6 +4518,43 @@ body.is-selecting .photo-tile .select-overlay,
   text-transform: uppercase;
   letter-spacing: 0.04em;
   flex-shrink: 0;
+}
+
+@keyframes sheetSlideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .share-modal-card {
+    width: 100vw;
+    max-width: 100vw;
+    margin: auto 0 0 0;
+    border-radius: 24px 24px 0 0;
+    max-height: 85vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+    animation: sheetSlideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .share-modal-body {
+    padding: 14px 16px;
+  }
+
+  .share-preview-card {
+    padding: 8px 12px;
+  }
+
+  .share-action-tile {
+    padding: 10px 12px;
+  }
 }
 
 
