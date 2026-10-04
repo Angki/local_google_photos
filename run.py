@@ -12,6 +12,14 @@ import time
 import webbrowser
 from pathlib import Path
 
+# Ensure UTF-8 console output on Windows to prevent UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Add project root to sys.path
 APP_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_ROOT))
@@ -85,9 +93,9 @@ def check_environment(source_dir: Path, host: str, port: int):
 
     print(f"  [+] Local Browser   : http://localhost:{port}")
     if local_ip not in ("127.0.0.1", "localhost"):
-        print(f"  [+] Home Wi-Fi LAN  : http://{local_ip}:{port} (Buka di browser HP Anda 📱)")
+        print(f"  [+] Home Wi-Fi LAN  : http://{local_ip}:{port} (Buka di browser HP)")
     if ts_ip:
-        print(f"  [+] Tailscale (VPN) : http://{ts_ip}:{port} (Akses dari mana saja di HP Anda 🚀)")
+        print(f"  [+] Tailscale (VPN) : http://{ts_ip}:{port} (Akses dari mana saja di HP)")
     print("=" * 72)
 
 
@@ -111,7 +119,13 @@ def main():
     # Import config after env overrides
     from backend.config import HOST, PORT, SOURCE_DATA_DIR
 
-    active_host = args.host if args.host else HOST
+    # Default to 0.0.0.0 to enable mobile Wi-Fi & Tailscale VPN access unless --host is specified
+    if args.host:
+        active_host = args.host
+    elif HOST and HOST != "127.0.0.1":
+        active_host = HOST
+    else:
+        active_host = "0.0.0.0"
     requested_port = args.port if args.port else PORT
 
     # Check port availability to avoid [WinError 10048]
