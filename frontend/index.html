@@ -837,7 +837,117 @@ CHANGELOG:
 
       <div class="media-display" id="mediaDisplay">
         <img src="" alt="" id="lightboxImg" class="lightbox-content">
-        <video controls autoplay loop playsinline preload="auto" id="lightboxVideo" class="lightbox-content hidden"></video>
+        <div class="video-player-container hidden" id="videoPlayerContainer">
+          <video autoplay loop playsinline preload="auto" id="lightboxVideo" class="lightbox-content video-elem"></video>
+
+          <!-- Center Animated Play/Pause Splash Ripple Button -->
+          <div class="video-center-splash hidden" id="videoCenterSplash">
+            <div class="splash-circle">
+              <svg class="splash-play-icon" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="6 3 20 12 6 21 6 3"></polygon>
+              </svg>
+              <svg class="splash-pause-icon hidden" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Double Tap Skip Ripples (Mobile / Desktop gestures) -->
+          <div class="video-skip-ripple skip-left hidden" id="videoSkipRippleLeft">
+            <div class="skip-pill">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+              <span>-10s</span>
+            </div>
+          </div>
+          <div class="video-skip-ripple skip-right hidden" id="videoSkipRippleRight">
+            <div class="skip-pill">
+              <span>+10s</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg>
+            </div>
+          </div>
+
+          <!-- Floating Glassmorphic Player Controls -->
+          <div class="custom-video-controls" id="customVideoControls">
+            <!-- Scrubber Track & Tooltip -->
+            <div class="video-progress-wrapper" id="videoProgressWrapper">
+              <div class="video-progress-track" id="videoProgressTrack">
+                <div class="video-buffer-bar" id="videoBufferBar"></div>
+                <div class="video-play-progress" id="videoPlayProgress"></div>
+                <div class="video-scrub-thumb" id="videoScrubThumb"></div>
+              </div>
+              <div class="video-time-bubble hidden" id="videoTimeBubble">00:00</div>
+            </div>
+
+            <!-- Controls Toolbar Row -->
+            <div class="video-toolbar-row">
+              <div class="video-toolbar-left">
+                <!-- Play/Pause Button -->
+                <button type="button" class="vid-btn vid-play-btn" id="vidPlayPauseBtn" title="Putar / Jeda (Spasi)">
+                  <svg class="vid-icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                  <svg class="vid-icon-pause hidden" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                </button>
+
+                <!-- -10s & +10s Buttons -->
+                <button type="button" class="vid-btn vid-skip-btn" id="vidRewind10Btn" title="Mundur 10 detik (J atau ←)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="7.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg>
+                </button>
+                <button type="button" class="vid-btn vid-skip-btn" id="vidForward10Btn" title="Maju 10 detik (L atau →)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="7.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg>
+                </button>
+
+                <!-- Volume Group -->
+                <div class="vid-volume-group" id="vidVolumeGroup">
+                  <button type="button" class="vid-btn" id="vidMuteBtn" title="Bisukan / Nyalakan Suara (M)">
+                    <svg class="vid-vol-high" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    <svg class="vid-vol-muted hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                  </button>
+                  <div class="vid-volume-slider-wrap">
+                    <input type="range" class="vid-vol-range" id="vidVolumeSlider" min="0" max="1" step="0.05" value="1" title="Volume">
+                  </div>
+                </div>
+
+                <!-- Time Label -->
+                <div class="vid-time-label">
+                  <span id="vidCurrentTime">00:00</span>
+                  <span class="vid-time-sep">/</span>
+                  <span id="vidDuration">00:00</span>
+                </div>
+              </div>
+
+              <div class="video-toolbar-right">
+                <!-- Speed Menu Dropdown -->
+                <div class="vid-speed-wrap" id="vidSpeedWrap">
+                  <button type="button" class="vid-speed-btn" id="vidSpeedBtn" title="Kecepatan Putar Video">1x</button>
+                  <div class="vid-speed-dropdown hidden" id="vidSpeedDropdown">
+                    <button type="button" class="speed-opt-btn" data-speed="0.5">0.5x</button>
+                    <button type="button" class="speed-opt-btn" data-speed="0.75">0.75x</button>
+                    <button type="button" class="speed-opt-btn active" data-speed="1">1.0x (Normal)</button>
+                    <button type="button" class="speed-opt-btn" data-speed="1.25">1.25x</button>
+                    <button type="button" class="speed-opt-btn" data-speed="1.5">1.5x</button>
+                    <button type="button" class="speed-opt-btn" data-speed="2">2.0x</button>
+                  </div>
+                </div>
+
+                <!-- Loop Toggle -->
+                <button type="button" class="vid-btn active" id="vidLoopBtn" title="Ulangi Otomatis (Loop)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+
+                <!-- Picture-in-Picture -->
+                <button type="button" class="vid-btn" id="vidPipBtn" title="Picture-in-Picture (Layar Mengambang)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><rect x="12" y="9" width="8" height="6" rx="1" ry="1"/></svg>
+                </button>
+
+                <!-- Fullscreen -->
+                <button type="button" class="vid-btn" id="vidFullscreenBtn" title="Layar Penuh (F)">
+                  <svg class="vid-fs-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                  <svg class="vid-fs-exit hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <button class="nav-arrow nav-next" id="navNextBtn" title="Next photo (Right Arrow)">
