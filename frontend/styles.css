@@ -3304,8 +3304,309 @@ body.is-selecting .photo-tile .select-overlay,
   color: var(--text-tertiary);
 }
 
+/* ==============================================================================
+   Direct Uploader & Drag-and-Drop Overlay Styles
+   ============================================================================== */
+.upload-header-btn {
+  background: rgba(66, 133, 244, 0.15) !important;
+  color: var(--google-blue) !important;
+  border: 1px solid rgba(66, 133, 244, 0.3) !important;
+}
 
+.upload-header-btn:hover {
+  background: var(--google-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.35);
+}
 
+.drag-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
+.drag-drop-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px;
+  background: var(--bg-surface);
+  border: 2.5px dashed var(--google-blue);
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 32px rgba(66, 133, 244, 0.3);
+  text-align: center;
+  transform: scale(1.02);
+  transition: transform 0.2s ease;
+}
 
+.drag-drop-icon-wrap {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(66, 133, 244, 0.15);
+  color: var(--google-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: bounce 1.4s infinite ease-in-out;
+}
 
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.drag-drop-content h3 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.drag-drop-content p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.upload-modal-card {
+  max-width: 600px;
+  width: 92%;
+}
+
+.upload-dropzone {
+  border: 2px dashed var(--border-color);
+  border-radius: 16px;
+  padding: 32px 20px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.upload-dropzone:hover, .upload-dropzone.drag-active {
+  border-color: var(--google-blue);
+  background: rgba(66, 133, 244, 0.08);
+}
+
+.upload-dropzone-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+}
+
+.upload-dropzone-inner svg {
+  color: var(--google-blue);
+  margin-bottom: 4px;
+}
+
+.dropzone-primary-text {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.dropzone-sub-text {
+  font-size: 0.82rem;
+  color: var(--text-tertiary);
+  margin: 0 0 8px 0;
+}
+
+.dropzone-select-btn {
+  margin-top: 6px;
+  pointer-events: auto;
+}
+
+.upload-progress-section {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-progress-summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.upload-status-list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.upload-status-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.upload-status-item .filename {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+  color: var(--text-primary);
+}
+
+.upload-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.upload-badge.success {
+  background: rgba(52, 168, 83, 0.2);
+  color: var(--google-green);
+}
+
+.upload-badge.error {
+  background: rgba(234, 67, 53, 0.2);
+  color: var(--google-red);
+}
+
+.upload-badge.uploading {
+  background: rgba(66, 133, 244, 0.2);
+  color: var(--google-blue);
+}
+
+/* ==============================================================================
+   Manual Metadata & Location Editor Styles
+   ============================================================================== */
+.metadata-modal-card {
+  max-width: 620px;
+  width: 94%;
+}
+
+.metadata-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-control {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.form-control:focus {
+  border-color: var(--google-blue);
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+}
+
+.form-help {
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-col {
+  flex: 1;
+}
+
+.map-picker-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.map-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.btn-text-action {
+  background: none;
+  border: none;
+  color: var(--google-red);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-text-action:hover {
+  text-decoration: underline;
+}
+
+.metadata-map-picker {
+  width: 100%;
+  height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: #1e293b;
+}
+
+.edit-metadata-action-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(66, 133, 244, 0.12);
+  color: var(--google-blue);
+  border: 1px solid rgba(66, 133, 244, 0.25);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.edit-metadata-action-btn:hover {
+  background: var(--google-blue);
+  color: #fff;
+  border-color: var(--google-blue);
+}

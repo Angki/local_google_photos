@@ -297,6 +297,43 @@
     ocrTextarea: document.getElementById("ocrTextarea"),
     ocrCharCount: document.getElementById("ocrCharCount"),
     ocrCopyBtn: document.getElementById("ocrCopyBtn"),
+
+    // Direct Mobile/Web Wi-Fi Uploader
+    uploadBtn: document.getElementById("uploadBtn"),
+    fileUploadInput: document.getElementById("fileUploadInput"),
+    dragDropOverlay: document.getElementById("dragDropOverlay"),
+    uploadModalWrapper: document.getElementById("uploadModalWrapper"),
+    uploadModalBackdrop: document.getElementById("uploadModalBackdrop"),
+    uploadModalCloseBtn: document.getElementById("uploadModalCloseBtn"),
+    uploadDropzone: document.getElementById("uploadDropzone"),
+    selectUploadFilesBtn: document.getElementById("selectUploadFilesBtn"),
+    uploadProgressSection: document.getElementById("uploadProgressSection"),
+    uploadProgressBar: document.getElementById("uploadProgressBar"),
+    uploadProgressStatusText: document.getElementById("uploadProgressStatusText"),
+    uploadProgressCount: document.getElementById("uploadProgressCount"),
+    uploadStatusList: document.getElementById("uploadStatusList"),
+    uploadCancelBtn: document.getElementById("uploadCancelBtn"),
+
+    // Batch ZIP Downloader
+    downloadZipSelectedBtn: document.getElementById("downloadZipSelectedBtn"),
+    albumDownloadZipBtn: document.getElementById("albumDownloadZipBtn"),
+
+    // Manual Metadata & Location Editor
+    editMetadataBtn: document.getElementById("editMetadataBtn"),
+    metadataModalWrapper: document.getElementById("metadataModalWrapper"),
+    metadataModalBackdrop: document.getElementById("metadataModalBackdrop"),
+    metadataModalCloseBtn: document.getElementById("metadataModalCloseBtn"),
+    metadataPhotoTitle: document.getElementById("metadataPhotoTitle"),
+    metadataForm: document.getElementById("metadataForm"),
+    editTakenAtInput: document.getElementById("editTakenAtInput"),
+    editDescriptionInput: document.getElementById("editDescriptionInput"),
+    editLocationLabelInput: document.getElementById("editLocationLabelInput"),
+    editLatitudeInput: document.getElementById("editLatitudeInput"),
+    editLongitudeInput: document.getElementById("editLongitudeInput"),
+    clearPinBtn: document.getElementById("clearPinBtn"),
+    metadataMapPicker: document.getElementById("metadataMapPicker"),
+    cancelMetadataBtn: document.getElementById("cancelMetadataBtn"),
+    saveMetadataBtn: document.getElementById("saveMetadataBtn"),
   };
 
   // --------------------------------------------------------------------------
@@ -404,8 +441,9 @@
   }
 
   function handleStatusUpdate(status) {
-    if (status.event === "photo_added") {
-      showToast(`Foto baru terdeteksi: ${status.filename} ✨`, null, null, 3500);
+    if (status.event === "photo_added" || status.type === "photo_added") {
+      const name = status.filename || (status.photo && status.photo.filename) || "Foto baru";
+      showToast(`Foto baru ditambahkan: ${name} ✨`, null, null, 3500);
       loadTimelineHierarchy();
       return;
     }
@@ -1975,6 +2013,89 @@
     }
     if (elements.ocrCopyBtn) {
       elements.ocrCopyBtn.addEventListener("click", copyOcrText);
+    }
+
+    // --- Direct Wi-Fi / Web Uploader Events ---
+    if (elements.uploadBtn) {
+      elements.uploadBtn.addEventListener("click", () => {
+        elements.uploadModalWrapper.classList.remove("hidden");
+      });
+    }
+    if (elements.selectUploadFilesBtn) {
+      elements.selectUploadFilesBtn.addEventListener("click", () => {
+        elements.fileUploadInput.click();
+      });
+    }
+    if (elements.fileUploadInput) {
+      elements.fileUploadInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFilesUpload(Array.from(e.target.files));
+        }
+      });
+    }
+    if (elements.uploadModalCloseBtn) {
+      elements.uploadModalCloseBtn.addEventListener("click", closeUploadModal);
+    }
+    if (elements.uploadModalBackdrop) {
+      elements.uploadModalBackdrop.addEventListener("click", closeUploadModal);
+    }
+    if (elements.uploadCancelBtn) {
+      elements.uploadCancelBtn.addEventListener("click", closeUploadModal);
+    }
+
+    // Window Drag & Drop Overlay
+    let dragCounter = 0;
+    window.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (elements.dragDropOverlay) elements.dragDropOverlay.classList.remove("hidden");
+    });
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+    });
+    window.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        if (elements.dragDropOverlay) elements.dragDropOverlay.classList.add("hidden");
+      }
+    });
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      if (elements.dragDropOverlay) elements.dragDropOverlay.classList.add("hidden");
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFilesUpload(Array.from(e.dataTransfer.files));
+      }
+    });
+
+    // --- Batch ZIP Downloader Events ---
+    if (elements.downloadZipSelectedBtn) {
+      elements.downloadZipSelectedBtn.addEventListener("click", downloadSelectedAsZip);
+    }
+    if (elements.albumDownloadZipBtn) {
+      elements.albumDownloadZipBtn.addEventListener("click", downloadCurrentAlbumAsZip);
+    }
+
+    // --- Manual Metadata & Location Editor Events ---
+    if (elements.editMetadataBtn) {
+      elements.editMetadataBtn.addEventListener("click", () => openMetadataModal());
+    }
+    if (elements.metadataModalCloseBtn) {
+      elements.metadataModalCloseBtn.addEventListener("click", closeMetadataModal);
+    }
+    if (elements.metadataModalBackdrop) {
+      elements.metadataModalBackdrop.addEventListener("click", closeMetadataModal);
+    }
+    if (elements.cancelMetadataBtn) {
+      elements.cancelMetadataBtn.addEventListener("click", closeMetadataModal);
+    }
+    if (elements.saveMetadataBtn) {
+      elements.saveMetadataBtn.addEventListener("click", saveMetadataChanges);
+    }
+    if (elements.clearPinBtn) {
+      elements.clearPinBtn.addEventListener("click", clearMetadataCoordinates);
     }
   }
 
@@ -3927,6 +4048,335 @@
     navigator.clipboard.writeText(text)
       .then(() => showToast("Teks OCR berhasil disalin! 📝"))
       .catch(() => showToast("Gagal menyalin teks"));
+  }
+
+  // ==============================================================================
+  // Direct Mobile / Web Wi-Fi Uploader Implementation
+  // ==============================================================================
+  function closeUploadModal() {
+    if (elements.uploadModalWrapper) {
+      elements.uploadModalWrapper.classList.add("hidden");
+    }
+    if (elements.fileUploadInput) {
+      elements.fileUploadInput.value = "";
+    }
+  }
+
+  async function handleFilesUpload(filesList) {
+    if (!filesList || filesList.length === 0) return;
+
+    elements.uploadModalWrapper.classList.remove("hidden");
+    elements.uploadProgressSection.classList.remove("hidden");
+    elements.uploadStatusList.innerHTML = "";
+    elements.uploadProgressBar.style.width = "0%";
+    elements.uploadProgressCount.textContent = `0 / ${filesList.length}`;
+    elements.uploadProgressStatusText.textContent = "Mengunggah file...";
+
+    // Create list items
+    const fileItems = filesList.map((file, idx) => {
+      const row = document.createElement("div");
+      row.className = "upload-status-item";
+      row.innerHTML = `
+        <span class="filename" title="${file.name}">${file.name}</span>
+        <span class="upload-badge uploading" id="uploadBadge_${idx}">Mengunggah...</span>
+      `;
+      elements.uploadStatusList.appendChild(row);
+      return { file, badgeId: `uploadBadge_${idx}` };
+    });
+
+    let uploadedSuccessCount = 0;
+    const batchSize = 3;
+
+    for (let i = 0; i < fileItems.length; i += batchSize) {
+      const chunk = fileItems.slice(i, i + batchSize);
+      const formData = new FormData();
+      chunk.forEach((item) => {
+        formData.append("files", item.file);
+      });
+
+      try {
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          chunk.forEach((item) => {
+            const badge = document.getElementById(item.badgeId);
+            if (badge) {
+              badge.className = "upload-badge success";
+              badge.textContent = "Selesai ✓";
+            }
+            uploadedSuccessCount++;
+          });
+        } else {
+          chunk.forEach((item) => {
+            const badge = document.getElementById(item.badgeId);
+            if (badge) {
+              badge.className = "upload-badge error";
+              badge.textContent = "Gagal";
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Upload error", err);
+        chunk.forEach((item) => {
+          const badge = document.getElementById(item.badgeId);
+          if (badge) {
+            badge.className = "upload-badge error";
+            badge.textContent = "Gagal";
+          }
+        });
+      }
+
+      const processedCount = Math.min(i + chunk.length, fileItems.length);
+      const pct = Math.round((processedCount / fileItems.length) * 100);
+      elements.uploadProgressBar.style.width = `${pct}%`;
+      elements.uploadProgressCount.textContent = `${processedCount} / ${fileItems.length}`;
+    }
+
+    elements.uploadProgressStatusText.textContent = `Selesai (${uploadedSuccessCount} berhasil)`;
+    if (uploadedSuccessCount > 0) {
+      showToast(`${uploadedSuccessCount} foto/video berhasil diunggah! 🚀`, null, null, 3500);
+      loadTimelineHierarchy();
+      fetchPhotos(true);
+    }
+  }
+
+  // ==============================================================================
+  // Batch ZIP Archive Downloader Implementation
+  // ==============================================================================
+  async function downloadSelectedAsZip() {
+    const selectedIds = Array.from(state.selectedPhotos);
+    if (selectedIds.length === 0) {
+      showToast("Pilih foto terlebih dahulu untuk diunduh sebagai ZIP");
+      return;
+    }
+
+    showToast(`Menyiapkan arsip ZIP untuk ${selectedIds.length} foto... 📦`);
+
+    try {
+      const res = await fetch("/api/photos/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          photo_ids: selectedIds,
+          archive_name: `google_photos_export_${Date.now()}.zip`,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Gagal membuat file ZIP.");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `google_photos_export_${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast("Unduhan ZIP berhasil dimulai! 📥");
+    } catch (e) {
+      console.error("ZIP Download failed", e);
+      showToast(`Gagal mengunduh ZIP: ${e.message}`);
+    }
+  }
+
+  function downloadCurrentAlbumAsZip() {
+    if (!currentAlbumId) {
+      showToast("Pilih album terlebih dahulu");
+      return;
+    }
+    showToast("Mengunduh album lengkap sebagai file ZIP... 📦");
+    const a = document.createElement("a");
+    a.href = `/api/albums/${currentAlbumId}/download-zip`;
+    a.download = `album_${currentAlbumId}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // ==============================================================================
+  // Manual Metadata & Location Editor Implementation
+  // ==============================================================================
+  let metadataMapInstance = null;
+  let metadataMapMarker = null;
+  let activeMetadataPhoto = null;
+
+  function openMetadataModal(photo = null) {
+    const targetPhoto = photo || (state.lightboxIndex !== -1 ? state.photos[state.lightboxIndex] : null);
+    if (!targetPhoto) return;
+
+    activeMetadataPhoto = targetPhoto;
+    if (elements.metadataPhotoTitle) {
+      elements.metadataPhotoTitle.textContent = targetPhoto.filename || `Foto #${targetPhoto.id}`;
+    }
+
+    // Format taken_at to YYYY-MM-DDTHH:MM:SS for datetime-local
+    let dtStr = "";
+    if (targetPhoto.taken_at) {
+      if (typeof targetPhoto.taken_at === "number") {
+        const d = new Date(targetPhoto.taken_at * 1000);
+        dtStr = d.toISOString().slice(0, 19);
+      } else {
+        const clean = String(targetPhoto.taken_at).replace(" ", "T");
+        dtStr = clean.slice(0, 19);
+      }
+    }
+    elements.editTakenAtInput.value = dtStr;
+    elements.editDescriptionInput.value = targetPhoto.description || "";
+    elements.editLocationLabelInput.value = targetPhoto.location_label || "";
+
+    const hasLat = targetPhoto.latitude != null && targetPhoto.latitude !== 0;
+    const hasLng = targetPhoto.longitude != null && targetPhoto.longitude !== 0;
+
+    elements.editLatitudeInput.value = hasLat ? targetPhoto.latitude : "";
+    elements.editLongitudeInput.value = hasLng ? targetPhoto.longitude : "";
+
+    elements.metadataModalWrapper.classList.remove("hidden");
+
+    // Init or update Leaflet Map
+    setTimeout(() => {
+      initOrUpdateMetadataMap(hasLat ? targetPhoto.latitude : null, hasLng ? targetPhoto.longitude : null);
+    }, 120);
+  }
+
+  function initOrUpdateMetadataMap(lat, lng) {
+    if (typeof L === "undefined" || !elements.metadataMapPicker) return;
+
+    if (!metadataMapInstance) {
+      metadataMapInstance = L.map(elements.metadataMapPicker, {
+        zoomControl: true,
+        attributionControl: false,
+      });
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        maxZoom: 18,
+        subdomains: "abcd",
+      }).addTo(metadataMapInstance);
+
+      metadataMapInstance.on("click", (e) => {
+        setMetadataCoordinates(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    metadataMapInstance.invalidateSize();
+
+    if (lat != null && lng != null) {
+      setMetadataCoordinates(lat, lng, false);
+      metadataMapInstance.setView([lat, lng], 13);
+    } else {
+      metadataMapInstance.setView([-2.5489, 118.0149], 4);
+      if (metadataMapMarker) {
+        metadataMapInstance.removeLayer(metadataMapMarker);
+        metadataMapMarker = null;
+      }
+    }
+  }
+
+  function setMetadataCoordinates(lat, lng, pan = true) {
+    const cleanLat = Number(lat.toFixed(6));
+    const cleanLng = Number(lng.toFixed(6));
+
+    elements.editLatitudeInput.value = cleanLat;
+    elements.editLongitudeInput.value = cleanLng;
+
+    const pinIcon = L.divIcon({
+      className: "custom-pin-marker",
+      html: `<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#ea4335"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 30],
+    });
+
+    if (metadataMapMarker) {
+      metadataMapMarker.setLatLng([cleanLat, cleanLng]);
+    } else {
+      metadataMapMarker = L.marker([cleanLat, cleanLng], { icon: pinIcon, draggable: true }).addTo(metadataMapInstance);
+      metadataMapMarker.on("dragend", (e) => {
+        const pos = e.target.getLatLng();
+        setMetadataCoordinates(pos.lat, pos.lng, false);
+      });
+    }
+
+    if (pan && metadataMapInstance) {
+      metadataMapInstance.panTo([cleanLat, cleanLng]);
+    }
+  }
+
+  function clearMetadataCoordinates() {
+    elements.editLatitudeInput.value = "";
+    elements.editLongitudeInput.value = "";
+    if (metadataMapMarker && metadataMapInstance) {
+      metadataMapInstance.removeLayer(metadataMapMarker);
+      metadataMapMarker = null;
+    }
+  }
+
+  function closeMetadataModal() {
+    if (elements.metadataModalWrapper) {
+      elements.metadataModalWrapper.classList.add("hidden");
+    }
+    activeMetadataPhoto = null;
+  }
+
+  async function saveMetadataChanges() {
+    if (!activeMetadataPhoto) return;
+
+    const takenAtVal = elements.editTakenAtInput.value.trim();
+    const descVal = elements.editDescriptionInput.value.trim();
+    const labelVal = elements.editLocationLabelInput.value.trim();
+    const latVal = elements.editLatitudeInput.value ? parseFloat(elements.editLatitudeInput.value) : null;
+    const lngVal = elements.editLongitudeInput.value ? parseFloat(elements.editLongitudeInput.value) : null;
+
+    const payload = {};
+    if (takenAtVal) payload.taken_at = takenAtVal;
+    if (descVal !== "") payload.description = descVal;
+    if (labelVal !== "") payload.location_label = labelVal;
+    if (latVal != null && lngVal != null) {
+      payload.latitude = latVal;
+      payload.longitude = lngVal;
+    }
+
+    try {
+      const res = await fetch(`/api/photos/${activeMetadataPhoto.id}/metadata`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Gagal menyimpan metadata.");
+      }
+
+      const data = await res.json();
+      if (data.success && data.photo) {
+        // Update local object
+        Object.assign(activeMetadataPhoto, data.photo);
+
+        // Update photo in state.photos if present
+        const stateIdx = state.photos.findIndex((p) => p.id === activeMetadataPhoto.id);
+        if (stateIdx !== -1) {
+          state.photos[stateIdx] = activeMetadataPhoto;
+        }
+
+        // Re-render Lightbox if open on this photo
+        if (state.lightboxIndex !== -1 && state.photos[state.lightboxIndex]?.id === activeMetadataPhoto.id) {
+          renderLightbox();
+        }
+
+        closeMetadataModal();
+        showToast("Metadata & lokasi foto berhasil diperbarui! ✅");
+      }
+    } catch (e) {
+      console.error("Save metadata error", e);
+      showToast(`Gagal menyimpan perubahan: ${e.message}`);
+    }
   }
 
   // --- Bootstrap ---

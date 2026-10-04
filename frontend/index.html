@@ -119,6 +119,16 @@ CHANGELOG:
           <line x1="12" y1="18" x2="12.01" y2="18"></line>
         </svg>
       </button>
+
+      <!-- Direct Upload Media Button -->
+      <button class="icon-btn upload-header-btn" id="uploadBtn" title="Unggah Foto & Video">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+      </button>
+      <input type="file" id="fileUploadInput" multiple accept="image/*,video/*" style="display: none;">
     </div>
   </header>
 
@@ -152,6 +162,14 @@ CHANGELOG:
           <path d="M12 5v14M5 12h14"/>
         </svg>
         <span>Add to Album</span>
+      </button>
+      <button class="action-btn" id="downloadZipSelectedBtn" title="Download Selected as ZIP">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span>Download ZIP</span>
       </button>
       <button class="action-btn" id="lockSelectedBtn" title="Sembunyikan ke Folder Terkunci">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -282,6 +300,14 @@ CHANGELOG:
         </button>
         <h2 id="albumTitle">Album Name</h2>
         <div class="album-actions">
+          <button class="action-btn" id="albumDownloadZipBtn" title="Download Entire Album as ZIP">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Download ZIP</span>
+          </button>
           <button class="action-btn danger-btn" id="deleteAlbumBtn" title="Delete Entire Album">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
@@ -743,6 +769,17 @@ CHANGELOG:
           <div class="info-label">People</div>
           <div class="tags-container" id="infoPeopleTags"></div>
         </div>
+
+        <!-- Manual Metadata & Location Editor Action -->
+        <div class="info-block info-edit-action-block">
+          <button type="button" class="action-btn edit-metadata-action-btn" id="editMetadataBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            <span>Edit Tanggal & Lokasi</span>
+          </button>
+        </div>
       </div>
     </aside>
   </div>
@@ -834,6 +871,56 @@ CHANGELOG:
         <div class="album-list" id="albumList">
           <!-- Albums injected here -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal (Option B) -->
+  <div class="sync-modal-wrapper hidden" id="deleteModalWrapper" role="dialog" aria-modal="true">
+    <div class="sync-modal-backdrop" id="deleteModalBackdrop"></div>
+    <div class="sync-modal-card delete-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="delete-icon-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 id="deleteModalTitle">Hapus Foto</h3>
+            <span class="sync-stage-text">Konfirmasi penghapusan</span>
+          </div>
+        </div>
+        <button class="close-btn" id="deleteModalCloseBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="delete-modal-body">
+        <p class="delete-modal-msg" id="deleteModalMessage">Pilih opsi penghapusan untuk item yang dipilih:</p>
+        <div class="delete-options-list">
+          <label class="delete-option-item selected" id="optSoftLabel">
+            <input type="radio" name="deleteOption" id="optSoft" value="soft" checked />
+            <div class="option-content">
+              <div class="option-header"><strong>Pindahkan ke Tempat Sampah</strong></div>
+              <small class="option-desc">Foto disembunyikan dari linimasa namun tetap aman di disk. Dapat dipulihkan kapan saja.</small>
+            </div>
+          </label>
+          <label class="delete-option-item danger" id="optHardLabel">
+            <input type="radio" name="deleteOption" id="optHard" value="hard" />
+            <div class="option-content">
+              <div class="option-header"><strong style="color: var(--google-red);">Hapus Permanen dari Disk</strong></div>
+              <small class="option-desc">Menghapus file media fisik asli dan metadata JSON dari hard disk selamanya. Tidak dapat dibatalkan.</small>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="sync-modal-footer">
+        <button type="button" class="btn btn-secondary" id="deleteModalCancelBtn">Batal</button>
+        <button type="button" class="btn btn-danger" id="deleteModalConfirmBtn">Lanjutkan Hapus</button>
       </div>
     </div>
   </div>
@@ -1139,6 +1226,160 @@ CHANGELOG:
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Window Drag-and-Drop Overlay -->
+  <div class="drag-drop-overlay hidden" id="dragDropOverlay">
+    <div class="drag-drop-content">
+      <div class="drag-drop-icon-wrap">
+        <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+      </div>
+      <h3>Lepaskan Foto & Video di Sini</h3>
+      <p>File akan diunggah dan disimpan ke koleksi Google Photos lokal</p>
+    </div>
+  </div>
+
+  <!-- Direct Media Uploader Modal -->
+  <div class="sync-modal-wrapper hidden" id="uploadModalWrapper" role="dialog" aria-modal="true">
+    <div class="sync-modal-backdrop" id="uploadModalBackdrop"></div>
+    <div class="sync-modal-card upload-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="modal-icon-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </div>
+          <div>
+            <h3>Unggah Foto & Video</h3>
+            <span class="sync-stage-text">Simpan langsung ke koleksi Takeout lokal</span>
+          </div>
+        </div>
+        <button class="icon-btn" id="uploadModalCloseBtn" title="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sync-modal-body upload-modal-body">
+        <!-- Dropzone -->
+        <div class="upload-dropzone" id="uploadDropzone">
+          <div class="upload-dropzone-inner">
+            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+              <path d="M12 12v9"></path>
+              <path d="m16 16-4-4-4 4"></path>
+            </svg>
+            <p class="dropzone-primary-text">Tarik & lepas file media ke sini</p>
+            <p class="dropzone-sub-text">Mendukung JPG, PNG, HEIC, DNG, WEBP, GIF, MP4, MOV, MKV</p>
+            <button type="button" class="btn btn-primary dropzone-select-btn" id="selectUploadFilesBtn">
+              Pilih dari Komputer / HP
+            </button>
+          </div>
+        </div>
+
+        <!-- Progress List -->
+        <div class="upload-progress-section hidden" id="uploadProgressSection">
+          <div class="upload-progress-summary">
+            <span id="uploadProgressStatusText">Mengunggah...</span>
+            <span id="uploadProgressCount">0 / 0</span>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="uploadProgressBar" style="width: 0%;"></div>
+          </div>
+          <div class="upload-status-list" id="uploadStatusList"></div>
+        </div>
+      </div>
+
+      <div class="sync-modal-footer">
+        <button class="btn btn-secondary" id="uploadCancelBtn">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Metadata & Location Editor Modal -->
+  <div class="sync-modal-wrapper hidden" id="metadataModalWrapper" role="dialog" aria-modal="true">
+    <div class="sync-modal-backdrop" id="metadataModalBackdrop"></div>
+    <div class="sync-modal-card metadata-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="modal-icon-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+          <div>
+            <h3>Edit Waktu & Lokasi Foto</h3>
+            <span class="sync-stage-text" id="metadataPhotoTitle">Perbarui detail metadata</span>
+          </div>
+        </div>
+        <button class="icon-btn" id="metadataModalCloseBtn" title="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sync-modal-body metadata-modal-body">
+        <form id="metadataForm" class="metadata-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="editTakenAtInput">Waktu & Tanggal Pengambilan</label>
+            <input type="datetime-local" step="1" id="editTakenAtInput" class="form-control" />
+            <small class="form-help">Sesuaikan jika foto memiliki timestamp yang keliru.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="editDescriptionInput">Deskripsi / Keterangan</label>
+            <input type="text" id="editDescriptionInput" class="form-control" placeholder="Tuliskan catatan atau cerita foto..." />
+          </div>
+
+          <div class="form-group">
+            <label for="editLocationLabelInput">Nama Tempat / Label Lokasi</label>
+            <input type="text" id="editLocationLabelInput" class="form-control" placeholder="Contoh: Monumen Nasional, Jakarta" />
+            <small class="form-help">Biarkan kosong untuk mengisi otomatis dari koordinat GPS.</small>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group form-col">
+              <label for="editLatitudeInput">Latitude</label>
+              <input type="number" step="0.000001" id="editLatitudeInput" class="form-control" placeholder="-6.2088" />
+            </div>
+            <div class="form-group form-col">
+              <label for="editLongitudeInput">Longitude</label>
+              <input type="number" step="0.000001" id="editLongitudeInput" class="form-control" placeholder="106.8456" />
+            </div>
+          </div>
+
+          <div class="map-picker-block">
+            <div class="map-picker-header">
+              <span>Pilih Titik di Peta (Klik peta untuk meletakkan pin)</span>
+              <button type="button" class="btn-text-action" id="clearPinBtn">Hapus Koordinat</button>
+            </div>
+            <div id="metadataMapPicker" class="metadata-map-picker"></div>
+          </div>
+        </form>
+      </div>
+
+      <div class="sync-modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelMetadataBtn">Batal</button>
+        <button type="button" class="btn btn-primary" id="saveMetadataBtn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Simpan Perubahan</span>
+        </button>
       </div>
     </div>
   </div>
