@@ -15,6 +15,7 @@ from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifi
 from watchdog.observers import Observer
 
 from backend.config import ALL_MEDIA_EXTENSIONS, SOURCE_DATA_DIR
+from backend.database import get_db_connection
 from backend.scanner import index_single_media_file
 
 logger = logging.getLogger("FolderWatcher")
@@ -63,9 +64,15 @@ class MediaWatcherHandler(FileSystemEventHandler):
             if not file_path.is_file() or file_path.stat().st_size == 0:
                 return
 
-            logger.info(f"New media detected by watcher: {file_path.name}")
+            resolved_path_str = str(file_path.resolve())
+            with get_db_connection() as conn:
+                existing = conn.execute(
+                    "SELECT id FROM photos WHERE file_path = ?", (resolved_path_str,)
+                ).fetchone()
+
+            is_truly_new = existing is None
             photo_id = index_single_media_file(file_path)
-            if photo_id:
+            if photo_id and is_truly_new:
                 logger.info(f"Auto-indexed new photo (ID: {photo_id}): {file_path.name}")
                 if self.on_new_media_callback:
                     self.on_new_media_callback(photo_id, file_path)

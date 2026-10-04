@@ -311,7 +311,7 @@ if image_sample:
         log_fail(f"Soft-Delete Photo (ID {target_id})", str(del_res))
 
     # 2. Verify in Trash
-    trash_res = http_request("/api/photos/trash?limit=20")
+    trash_res = http_request("/api/photos/trash?limit=100")
     trash_ids = [p["id"] for p in trash_res.get("data", {}).get("photos", [])]
     if target_id in trash_ids:
         log_pass("Verify in Trash", f"Photo {target_id} is present in trash list")
