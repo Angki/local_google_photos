@@ -32,6 +32,24 @@
     ws: null,
     selectedPhotos: new Set(),
     lastSelectedId: null,
+    memories: [],
+    duplicateGroups: [],
+    selectedDuplicates: new Set(),
+    isLivePhotoPlaying: false,
+    editState: {
+      rotate: 0,
+      flip_h: false,
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      warmth: 0,
+      auto_enhance: false,
+    },
+    editingPhoto: null,
+    lockedToken: null,
+    lockedPinInput: "",
+    isPinSetupMode: false,
+    pinSetupFirstPass: "",
   };
 
   // DOM Elements
@@ -188,6 +206,97 @@
     mapTrayToggleBtn: document.getElementById("mapTrayToggleBtn"),
     lightboxMiniMap: document.getElementById("lightboxMiniMap"),
     openInPhotoMapBtn: document.getElementById("openInPhotoMapBtn"),
+
+    // Memories (Fase 1)
+    memoriesSection: document.getElementById("memoriesSection"),
+    memoriesCarousel: document.getElementById("memoriesCarousel"),
+    infoLocationName: document.getElementById("infoLocationName"),
+
+    // Duplicates (Fase 2)
+    duplicatesChip: document.getElementById("duplicatesChip"),
+    duplicatesBadgeCount: document.getElementById("duplicatesBadgeCount"),
+    duplicatesContainer: document.getElementById("duplicatesContainer"),
+    duplicatesBackBtn: document.getElementById("duplicatesBackBtn"),
+    duplicatesSummaryBadge: document.getElementById("duplicatesSummaryBadge"),
+    duplicatesAutoSelectBtn: document.getElementById("duplicatesAutoSelectBtn"),
+    duplicatesDeleteSelectedBtn: document.getElementById("duplicatesDeleteSelectedBtn"),
+    duplicatesSelectedCount: document.getElementById("duplicatesSelectedCount"),
+    duplicatesGroupsList: document.getElementById("duplicatesGroupsList"),
+    duplicatesEmptyState: document.getElementById("duplicatesEmptyState"),
+
+    // Live Photo (Fase 3)
+    lightboxLiveBtn: document.getElementById("lightboxLiveBtn"),
+
+    // Photo Studio & Editor (Fase 6)
+    lightboxEditBtn: document.getElementById("lightboxEditBtn"),
+    editorModalWrapper: document.getElementById("editorModalWrapper"),
+    editorModalBackdrop: document.getElementById("editorModalBackdrop"),
+    editorCloseBtn: document.getElementById("editorCloseBtn"),
+    editorFilename: document.getElementById("editorFilename"),
+    editorResetBtn: document.getElementById("editorResetBtn"),
+    editorSaveCopyBtn: document.getElementById("editorSaveCopyBtn"),
+    editorPreviewImg: document.getElementById("editorPreviewImg"),
+    tabTuneBtn: document.getElementById("tabTuneBtn"),
+    tabTransformBtn: document.getElementById("tabTransformBtn"),
+    panelTune: document.getElementById("panelTune"),
+    panelTransform: document.getElementById("panelTransform"),
+    editorAutoEnhanceBtn: document.getElementById("editorAutoEnhanceBtn"),
+    sliderBrightness: document.getElementById("sliderBrightness"),
+    valBrightness: document.getElementById("valBrightness"),
+    sliderContrast: document.getElementById("sliderContrast"),
+    valContrast: document.getElementById("valContrast"),
+    sliderSaturation: document.getElementById("sliderSaturation"),
+    valSaturation: document.getElementById("valSaturation"),
+    sliderWarmth: document.getElementById("sliderWarmth"),
+    valWarmth: document.getElementById("valWarmth"),
+    btnRotate90: document.getElementById("btnRotate90"),
+    btnFlipH: document.getElementById("btnFlipH"),
+
+    // LAN & Mobile QR Code Access (Phase 9)
+    lanShareBtn: document.getElementById("lanShareBtn"),
+    lanModalWrapper: document.getElementById("lanModalWrapper"),
+    lanModalBackdrop: document.getElementById("lanModalBackdrop"),
+    lanModalCloseBtn: document.getElementById("lanModalCloseBtn"),
+    lanQrContainer: document.getElementById("lanQrContainer"),
+    lanUrlInput: document.getElementById("lanUrlInput"),
+    lanCopyUrlBtn: document.getElementById("lanCopyUrlBtn"),
+
+    // Locked Folder (Phase 9)
+    lockedChip: document.getElementById("lockedChip"),
+    lockedBadgeCount: document.getElementById("lockedBadgeCount"),
+    lockedContainer: document.getElementById("lockedContainer"),
+    lockedBackBtn: document.getElementById("lockedBackBtn"),
+    lockedRelockBtn: document.getElementById("lockedRelockBtn"),
+    lockedCountBadge: document.getElementById("lockedCountBadge"),
+    lockedGrid: document.getElementById("lockedGrid"),
+    lockedEmptyState: document.getElementById("lockedEmptyState"),
+    lockSelectedBtn: document.getElementById("lockSelectedBtn"),
+    lightboxLockBtn: document.getElementById("lightboxLockBtn"),
+    lightboxUnlockBtn: document.getElementById("lightboxUnlockBtn"),
+    pinModalWrapper: document.getElementById("pinModalWrapper"),
+    pinModalBackdrop: document.getElementById("pinModalBackdrop"),
+    pinModalCloseBtn: document.getElementById("pinModalCloseBtn"),
+    pinModalTitle: document.getElementById("pinModalTitle"),
+    pinModalSubtitle: document.getElementById("pinModalSubtitle"),
+    pinDotsRow: document.getElementById("pinDotsRow"),
+    pinDot0: document.getElementById("pinDot0"),
+    pinDot1: document.getElementById("pinDot1"),
+    pinDot2: document.getElementById("pinDot2"),
+    pinDot3: document.getElementById("pinDot3"),
+    pinErrorText: document.getElementById("pinErrorText"),
+    keypadClearBtn: document.getElementById("keypadClearBtn"),
+    keypadBackspaceBtn: document.getElementById("keypadBackspaceBtn"),
+
+    // OCR / Live Text (Phase 9)
+    lightboxOcrBtn: document.getElementById("lightboxOcrBtn"),
+    ocrModalWrapper: document.getElementById("ocrModalWrapper"),
+    ocrModalBackdrop: document.getElementById("ocrModalBackdrop"),
+    ocrModalCloseBtn: document.getElementById("ocrModalCloseBtn"),
+    ocrLoadingState: document.getElementById("ocrLoadingState"),
+    ocrTextContainer: document.getElementById("ocrTextContainer"),
+    ocrTextarea: document.getElementById("ocrTextarea"),
+    ocrCharCount: document.getElementById("ocrCharCount"),
+    ocrCopyBtn: document.getElementById("ocrCopyBtn"),
   };
 
   // --------------------------------------------------------------------------
@@ -195,12 +304,16 @@
   // --------------------------------------------------------------------------
   function init() {
     setupTheme();
+    initPWA();
     setupEventListeners();
     setupWebSocket();
     setupIntersectionObserver();
     setupScrollSpy();
     loadTimelineHierarchy();
     updateTrashBadge();
+    updateDuplicatesBadge();
+    updateLockedBadge();
+    loadMemories();
     fetchPhotos(true);
   }
 
@@ -291,6 +404,12 @@
   }
 
   function handleStatusUpdate(status) {
+    if (status.event === "photo_added") {
+      showToast(`Foto baru terdeteksi: ${status.filename} ✨`, null, null, 3500);
+      loadTimelineHierarchy();
+      return;
+    }
+
     state.scannerStatus = status;
 
     // Update Header Sync Pill
@@ -686,10 +805,20 @@
     if (state.photos.length === 0) {
       elements.emptyState.classList.remove("hidden");
       elements.timelineSections.innerHTML = "";
+      if (elements.memoriesSection) elements.memoriesSection.classList.add("hidden");
       return;
     }
 
     elements.emptyState.classList.add("hidden");
+
+    // Manage memories visibility on gallery reset
+    if (elements.memoriesSection) {
+      if (state.currentCategory === "all" && !state.searchQuery && !state.currentYear && !state.currentMonth && state.memories && state.memories.length > 0) {
+        elements.memoriesSection.classList.remove("hidden");
+      } else {
+        elements.memoriesSection.classList.add("hidden");
+      }
+    }
 
     if (reset) {
       elements.timelineSections.innerHTML = "";
@@ -831,9 +960,18 @@
     if (photo.has_geo) {
       const geoBadge = document.createElement("div");
       geoBadge.className = "geo-badge";
-      geoBadge.title = "Ada data lokasi (GPS)";
+      const locDisplay = photo.location_label || (photo.city ? `${photo.city}, ${photo.country || ""}` : "Ada data lokasi (GPS)");
+      geoBadge.title = locDisplay;
       geoBadge.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>`;
       tile.appendChild(geoBadge);
+    }
+
+    // Live Photo / Motion Photo Badge
+    if (photo.is_live_photo) {
+      const liveBadge = document.createElement("div");
+      liveBadge.className = "live-photo-badge";
+      liveBadge.innerHTML = `<span class="live-circle">◉</span> LIVE`;
+      tile.appendChild(liveBadge);
     }
 
     // Favorite Star Badge
@@ -918,6 +1056,7 @@
 
   function closeLightbox() {
     stopSlideshow();
+    stopLivePhotoPlayback();
     elements.lightboxModal.classList.add("hidden");
     elements.lightboxVideo.pause();
     elements.lightboxVideo.src = "";
@@ -937,11 +1076,16 @@
     const photo = state.photos[state.lightboxIndex];
     if (!photo) return;
 
+    stopLivePhotoPlayback();
+
     elements.lightboxDate.textContent = photo.taken_formatted || "Unknown Date";
     elements.lightboxFilename.textContent = photo.filename;
 
     if (photo.media_type === "video") {
+      if (elements.lightboxLiveBtn) elements.lightboxLiveBtn.classList.add("hidden");
+      if (elements.lightboxEditBtn) elements.lightboxEditBtn.classList.add("hidden");
       elements.lightboxImg.classList.add("hidden");
+      elements.lightboxImg.classList.remove("ken-burns");
       elements.lightboxVideo.classList.remove("hidden");
       if (elements.lightboxOpenLocalBtn) elements.lightboxOpenLocalBtn.style.display = "inline-flex";
 
@@ -965,12 +1109,33 @@
         showToast("Browser tidak dapat mendecode video ini. Klik tombol layar di kanan atas untuk memutar di aplikasi video laptop.");
       };
     } else {
+      if (elements.lightboxEditBtn) elements.lightboxEditBtn.classList.remove("hidden");
       elements.lightboxVideo.classList.add("hidden");
       elements.lightboxVideo.pause();
       elements.lightboxVideo.src = "";
       if (elements.lightboxOpenLocalBtn) elements.lightboxOpenLocalBtn.style.display = "none";
       elements.lightboxImg.classList.remove("hidden");
       elements.lightboxImg.src = `/api/media/${photo.id}`;
+
+      // Ken Burns Cinematic Animation during Slideshow
+      if (state.isSlideshowPlaying) {
+        elements.lightboxImg.classList.remove("ken-burns");
+        void elements.lightboxImg.offsetWidth;
+        elements.lightboxImg.classList.add("ken-burns");
+      } else {
+        elements.lightboxImg.classList.remove("ken-burns");
+      }
+
+      // Live Photo Toggle Button
+      if (elements.lightboxLiveBtn) {
+        if (photo.is_live_photo) {
+          elements.lightboxLiveBtn.classList.remove("hidden");
+          elements.lightboxLiveBtn.classList.remove("playing");
+          elements.lightboxLiveBtn.onclick = () => toggleLivePhotoPlayback(photo);
+        } else {
+          elements.lightboxLiveBtn.classList.add("hidden");
+        }
+      }
     }
 
     // Populate Sidebar Details
@@ -1002,14 +1167,27 @@
       elements.infoDescBlock.classList.add("hidden");
     }
 
-    // Geolocation
+    // Geolocation & Reverse Geocoded Location Label
     if (photo.has_geo && photo.latitude && photo.longitude) {
       elements.infoGeoBlock.classList.remove("hidden");
+      if (elements.infoLocationName) {
+        if (photo.location_label || photo.city) {
+          const locParts = [photo.city, photo.state, photo.country].filter(Boolean);
+          const locDisplay = photo.location_label || locParts.join(", ");
+          elements.infoLocationName.textContent = `📍 ${locDisplay}`;
+          elements.infoLocationName.classList.remove("hidden");
+        } else {
+          elements.infoLocationName.classList.add("hidden");
+        }
+      }
       elements.infoGeoCoords.textContent = `${photo.latitude.toFixed(5)}, ${photo.longitude.toFixed(5)}`;
       elements.infoMapsLink.href = `https://www.google.com/maps?q=${photo.latitude},${photo.longitude}`;
       updateLightboxMiniMap(photo.latitude, photo.longitude);
     } else {
       elements.infoGeoBlock.classList.add("hidden");
+      if (elements.infoLocationName) {
+        elements.infoLocationName.classList.add("hidden");
+      }
     }
 
     // People
@@ -1049,6 +1227,19 @@
     if (elements.lightboxFavoriteBtn) {
       elements.lightboxFavoriteBtn.classList.toggle("starred", Boolean(photo.is_favorite));
       elements.lightboxFavoriteBtn.title = photo.is_favorite ? "Hapus dari Favorit (f)" : "Tandai Favorit (f)";
+    }
+
+    // OCR & Locked status in Lightbox
+    if (elements.lightboxOcrBtn) {
+      elements.lightboxOcrBtn.style.display = photo.media_type === "video" ? "none" : "inline-flex";
+    }
+
+    if (photo.is_locked || state.currentCategory === "locked") {
+      if (elements.lightboxLockBtn) elements.lightboxLockBtn.style.display = "none";
+      if (elements.lightboxUnlockBtn) elements.lightboxUnlockBtn.style.display = "inline-flex";
+    } else {
+      if (elements.lightboxLockBtn) elements.lightboxLockBtn.style.display = "inline-flex";
+      if (elements.lightboxUnlockBtn) elements.lightboxUnlockBtn.style.display = "none";
     }
 
     // Toggle actions for Trash view vs Regular gallery
@@ -1134,6 +1325,11 @@
           <rect x="14" y="4" width="4" height="16"></rect>
         </svg>`;
     }
+    if (elements.lightboxImg) {
+      elements.lightboxImg.classList.remove("ken-burns");
+      void elements.lightboxImg.offsetWidth;
+      elements.lightboxImg.classList.add("ken-burns");
+    }
     if (state.slideshowTimer) clearInterval(state.slideshowTimer);
     state.slideshowTimer = setInterval(() => {
       if (elements.lightboxModal.classList.contains("hidden")) {
@@ -1146,7 +1342,7 @@
         state.lightboxIndex = 0;
         renderLightboxPhoto();
       }
-    }, 3500);
+    }, 4000);
   }
 
   function stopSlideshow() {
@@ -1154,6 +1350,9 @@
     if (state.slideshowTimer) {
       clearInterval(state.slideshowTimer);
       state.slideshowTimer = null;
+    }
+    if (elements.lightboxImg) {
+      elements.lightboxImg.classList.remove("ken-burns");
     }
     if (elements.lightboxSlideshowBtn) {
       elements.lightboxSlideshowBtn.classList.remove("playing");
@@ -1323,19 +1522,39 @@
       if (state.currentCategory === "trash") {
         hideAlbumView();
         hidePhotoMapView();
+        hideDuplicatesView();
+        hideLockedView();
         showTrashView();
       } else if (state.currentCategory === "albums") {
         hideTrashView();
         hidePhotoMapView();
+        hideDuplicatesView();
+        hideLockedView();
         showAlbumList();
       } else if (state.currentCategory === "map") {
         hideTrashView();
         hideAlbumView();
+        hideDuplicatesView();
+        hideLockedView();
         showPhotoMapView();
+      } else if (state.currentCategory === "duplicates") {
+        hideTrashView();
+        hideAlbumView();
+        hidePhotoMapView();
+        hideLockedView();
+        showDuplicatesView();
+      } else if (state.currentCategory === "locked") {
+        hideTrashView();
+        hideAlbumView();
+        hidePhotoMapView();
+        hideDuplicatesView();
+        openLockedFolderWithPin();
       } else {
         hideTrashView();
         hideAlbumView();
         hidePhotoMapView();
+        hideDuplicatesView();
+        hideLockedView();
         fetchPhotos(true);
       }
     });
@@ -1355,6 +1574,9 @@
     if (elements.lightboxDownloadBtn) {
       elements.lightboxDownloadBtn.addEventListener("click", downloadLightboxPhoto);
     }
+    if (elements.lightboxEditBtn) {
+      elements.lightboxEditBtn.addEventListener("click", () => openPhotoEditor());
+    }
 
     elements.lightboxInfoToggleBtn.addEventListener("click", () => {
       elements.infoSidebar.classList.toggle("open");
@@ -1369,6 +1591,14 @@
       if (activeTag === "input" || activeTag === "textarea") {
         if (e.key === "Escape") document.activeElement.blur();
         return;
+      }
+
+      // Close editor modal if open
+      if (elements.editorModalWrapper && !elements.editorModalWrapper.classList.contains("hidden")) {
+        if (e.key === "Escape") {
+          closePhotoEditor();
+          return;
+        }
       }
 
       // Close shortcuts modal if open
@@ -1391,6 +1621,10 @@
           toggleLightboxFavorite();
         } else if (e.key.toLowerCase() === "d") {
           downloadLightboxPhoto();
+        } else if (e.key.toLowerCase() === "e") {
+          openPhotoEditor();
+        } else if (e.key.toLowerCase() === "l") {
+          toggleLivePhotoPlayback();
         } else if (e.key === " ") {
           e.preventDefault();
           toggleLightboxSlideshow();
@@ -1536,6 +1770,212 @@
         showPhotoMapView([lat, lng], 16, pid);
       });
     }
+
+    // --- Duplicates View Events ---
+    if (elements.duplicatesBackBtn) {
+      elements.duplicatesBackBtn.addEventListener("click", () => {
+        hideDuplicatesView();
+        state.currentCategory = "all";
+        document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+        const allChip = document.querySelector('[data-category="all"]');
+        if (allChip) allChip.classList.add("active");
+        elements.timelineContainer.classList.remove("hidden");
+        elements.timelineScrubber.classList.remove("hidden");
+        fetchPhotos(true);
+      });
+    }
+
+    if (elements.duplicatesAutoSelectBtn) {
+      elements.duplicatesAutoSelectBtn.addEventListener("click", autoSelectDuplicates);
+    }
+
+    if (elements.duplicatesDeleteSelectedBtn) {
+      elements.duplicatesDeleteSelectedBtn.addEventListener("click", deleteSelectedDuplicates);
+    }
+
+    // --- Mobile Touch Gestures for Lightbox (Swipe to navigate, swipe down to close) ---
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchEndX = 0;
+    let touchEndY = 0;
+
+    elements.lightboxModal.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }
+      },
+      { passive: true }
+    );
+
+    elements.lightboxModal.addEventListener(
+      "touchend",
+      (e) => {
+        if (e.changedTouches.length === 1) {
+          touchEndX = e.changedTouches[0].clientX;
+          touchEndY = e.changedTouches[0].clientY;
+
+          const deltaX = touchEndX - touchStartX;
+          const deltaY = touchEndY - touchStartY;
+          const absX = Math.abs(deltaX);
+          const absY = Math.abs(deltaY);
+
+          // Horizontal swipe: threshold 50px
+          if (absX > 50 && absX > absY * 1.3) {
+            if (deltaX < 0) {
+              navigateLightbox(1); // Swipe left -> Next
+            } else {
+              navigateLightbox(-1); // Swipe right -> Previous
+            }
+          }
+          // Vertical swipe down to close: threshold 80px
+          else if (deltaY > 80 && deltaY > absX * 1.4) {
+            closeLightbox();
+          }
+        }
+      },
+      { passive: true }
+    );
+
+    // --- Photo Studio & Editor Events (Fase 6) ---
+    if (elements.editorCloseBtn) {
+      elements.editorCloseBtn.addEventListener("click", closePhotoEditor);
+    }
+    if (elements.editorModalBackdrop) {
+      elements.editorModalBackdrop.addEventListener("click", closePhotoEditor);
+    }
+    if (elements.editorResetBtn) {
+      elements.editorResetBtn.addEventListener("click", resetEditorState);
+    }
+    if (elements.editorSaveCopyBtn) {
+      elements.editorSaveCopyBtn.addEventListener("click", () => savePhotoEdits(true));
+    }
+    if (elements.tabTuneBtn) {
+      elements.tabTuneBtn.addEventListener("click", () => switchEditorTab("tune"));
+    }
+    if (elements.tabTransformBtn) {
+      elements.tabTransformBtn.addEventListener("click", () => switchEditorTab("transform"));
+    }
+    if (elements.editorAutoEnhanceBtn) {
+      elements.editorAutoEnhanceBtn.addEventListener("click", toggleEditorAutoEnhance);
+    }
+    if (elements.sliderBrightness) {
+      elements.sliderBrightness.addEventListener("input", (e) => {
+        state.editState.brightness = parseInt(e.target.value) || 0;
+        if (elements.valBrightness) elements.valBrightness.textContent = e.target.value;
+        updateEditorPreviewFilters();
+      });
+    }
+    if (elements.sliderContrast) {
+      elements.sliderContrast.addEventListener("input", (e) => {
+        state.editState.contrast = parseInt(e.target.value) || 0;
+        if (elements.valContrast) elements.valContrast.textContent = e.target.value;
+        updateEditorPreviewFilters();
+      });
+    }
+    if (elements.sliderSaturation) {
+      elements.sliderSaturation.addEventListener("input", (e) => {
+        state.editState.saturation = parseInt(e.target.value) || 0;
+        if (elements.valSaturation) elements.valSaturation.textContent = e.target.value;
+        updateEditorPreviewFilters();
+      });
+    }
+    if (elements.sliderWarmth) {
+      elements.sliderWarmth.addEventListener("input", (e) => {
+        state.editState.warmth = parseInt(e.target.value) || 0;
+        if (elements.valWarmth) elements.valWarmth.textContent = e.target.value;
+        updateEditorPreviewFilters();
+      });
+    }
+    if (elements.btnRotate90) {
+      elements.btnRotate90.addEventListener("click", () => {
+        state.editState.rotate = (state.editState.rotate + 90) % 360;
+        updateEditorPreviewFilters();
+      });
+    }
+    if (elements.btnFlipH) {
+      elements.btnFlipH.addEventListener("click", () => {
+        state.editState.flip_h = !state.editState.flip_h;
+        updateEditorPreviewFilters();
+      });
+    }
+
+    // --- LAN & Mobile QR Code Access Events (Phase 9) ---
+    if (elements.lanShareBtn) {
+      elements.lanShareBtn.addEventListener("click", openLanModal);
+    }
+    if (elements.lanModalCloseBtn) {
+      elements.lanModalCloseBtn.addEventListener("click", closeLanModal);
+    }
+    if (elements.lanModalBackdrop) {
+      elements.lanModalBackdrop.addEventListener("click", closeLanModal);
+    }
+    if (elements.lanCopyUrlBtn) {
+      elements.lanCopyUrlBtn.addEventListener("click", copyLanUrl);
+    }
+
+    // --- Locked Folder & PIN Events (Phase 9) ---
+    if (elements.lockedBackBtn) {
+      elements.lockedBackBtn.addEventListener("click", () => {
+        hideLockedView();
+        state.currentCategory = "all";
+        document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+        const allChip = document.querySelector('[data-category="all"]');
+        if (allChip) allChip.classList.add("active");
+        elements.timelineContainer.classList.remove("hidden");
+        elements.timelineScrubber.classList.remove("hidden");
+        fetchPhotos(true);
+      });
+    }
+    if (elements.lockedRelockBtn) {
+      elements.lockedRelockBtn.addEventListener("click", relockFolder);
+    }
+    if (elements.lockSelectedBtn) {
+      elements.lockSelectedBtn.addEventListener("click", () => {
+        if (state.currentCategory === "locked") {
+          unlockSelectedPhotos();
+        } else {
+          lockSelectedPhotos();
+        }
+      });
+    }
+    if (elements.lightboxLockBtn) {
+      elements.lightboxLockBtn.addEventListener("click", lockCurrentLightboxPhoto);
+    }
+    if (elements.lightboxUnlockBtn) {
+      elements.lightboxUnlockBtn.addEventListener("click", unlockCurrentLightboxPhoto);
+    }
+    if (elements.pinModalCloseBtn) {
+      elements.pinModalCloseBtn.addEventListener("click", closePinModal);
+    }
+    if (elements.pinModalBackdrop) {
+      elements.pinModalBackdrop.addEventListener("click", closePinModal);
+    }
+    if (elements.keypadClearBtn) {
+      elements.keypadClearBtn.addEventListener("click", handlePinClear);
+    }
+    if (elements.keypadBackspaceBtn) {
+      elements.keypadBackspaceBtn.addEventListener("click", handlePinBackspace);
+    }
+    document.querySelectorAll(".keypad-btn[data-key]").forEach((btn) => {
+      btn.addEventListener("click", () => handlePinDigit(btn.dataset.key));
+    });
+
+    // --- OCR / Live Text Events (Phase 9) ---
+    if (elements.lightboxOcrBtn) {
+      elements.lightboxOcrBtn.addEventListener("click", triggerPhotoOcr);
+    }
+    if (elements.ocrModalCloseBtn) {
+      elements.ocrModalCloseBtn.addEventListener("click", closeOcrModal);
+    }
+    if (elements.ocrModalBackdrop) {
+      elements.ocrModalBackdrop.addEventListener("click", closeOcrModal);
+    }
+    if (elements.ocrCopyBtn) {
+      elements.ocrCopyBtn.addEventListener("click", copyOcrText);
+    }
   }
 
   // --- Selection Logic ---
@@ -1616,12 +2056,18 @@
         if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.add("hidden");
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.remove("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.remove("hidden");
+        if (elements.lockSelectedBtn) elements.lockSelectedBtn.classList.add("hidden");
       } else {
         if (elements.addToAlbumBtn) elements.addToAlbumBtn.classList.remove("hidden");
         if (elements.deleteSelectedBtn) elements.deleteSelectedBtn.classList.remove("hidden");
         if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.remove("hidden");
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.add("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.add("hidden");
+        if (elements.lockSelectedBtn) {
+          elements.lockSelectedBtn.classList.remove("hidden");
+          const span = elements.lockSelectedBtn.querySelector("span");
+          if (span) span.textContent = state.currentCategory === "locked" ? "Buka Kunci" : "Kunci";
+        }
       }
     } else {
       elements.selectionBar.classList.add("hidden");
@@ -1808,11 +2254,343 @@
     }
   }
 
+  // --------------------------------------------------------------------------
+  // PWA Support (Fase 4)
+  // --------------------------------------------------------------------------
+  function initPWA() {
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch((err) => {
+          console.warn("PWA SW registration notice:", err);
+        });
+      });
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Memories ("Pada Hari Ini" / Flashback - Fase 1)
+  // --------------------------------------------------------------------------
+  async function loadMemories() {
+    if (!elements.memoriesSection || !elements.memoriesCarousel) return;
+    try {
+      const res = await fetch("/api/memories");
+      if (!res.ok) return;
+      const data = await res.json();
+      state.memories = data.groups || data.memories || [];
+
+      if (state.memories.length === 0) {
+        elements.memoriesSection.classList.add("hidden");
+        return;
+      }
+
+      elements.memoriesCarousel.innerHTML = "";
+      state.memories.forEach((mem) => {
+        const card = document.createElement("div");
+        card.className = "memory-card";
+        const coverObj = mem.cover || mem.cover_photo;
+        const coverId = coverObj ? coverObj.id : (mem.photos && mem.photos[0] ? mem.photos[0].id : null);
+        const coverImgUrl = coverId ? `/api/thumbnails/${coverId}` : "";
+        const dateText = mem.date_label || `Tahun ${mem.year}`;
+
+        card.innerHTML = `
+          <img src="${coverImgUrl}" alt="${escapeHtml(mem.title)}" loading="lazy" onerror="if(this.src.indexOf('/api/media/')===-1) this.src='/api/media/${coverId}'" />
+          <div class="memory-card-overlay">
+            <span class="memory-year-badge">${mem.years_ago} TAHUN LALU</span>
+            <div class="memory-card-bottom">
+              <span class="memory-title-text">${escapeHtml(mem.title)}</span>
+              <span class="memory-count-text">${mem.count} foto • ${escapeHtml(dateText)}</span>
+            </div>
+          </div>
+        `;
+
+        card.addEventListener("click", () => {
+          if (mem.photos && mem.photos.length > 0) {
+            state.photos = [...mem.photos];
+            state.lightboxIndex = 0;
+            renderLightboxPhoto();
+            elements.lightboxModal.classList.remove("hidden");
+            document.body.style.overflow = "hidden";
+            startSlideshow();
+          }
+        });
+
+        elements.memoriesCarousel.appendChild(card);
+      });
+
+      if (state.currentCategory === "all" && !state.searchQuery && !state.currentYear && !state.currentMonth) {
+        elements.memoriesSection.classList.remove("hidden");
+      } else {
+        elements.memoriesSection.classList.add("hidden");
+      }
+    } catch (e) {
+      console.warn("Memories failed to load", e);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Live Photo & Motion Photo Playback (Fase 3)
+  // --------------------------------------------------------------------------
+  function toggleLivePhotoPlayback(photo) {
+    if (!photo) photo = state.photos[state.lightboxIndex];
+    if (!photo || !photo.is_live_photo) return;
+
+    if (state.isLivePhotoPlaying) {
+      stopLivePhotoPlayback();
+    } else {
+      startLivePhotoPlayback(photo);
+    }
+  }
+
+  function startLivePhotoPlayback(photo) {
+    state.isLivePhotoPlaying = true;
+    if (elements.lightboxLiveBtn) {
+      elements.lightboxLiveBtn.classList.add("playing");
+    }
+    elements.lightboxImg.classList.add("hidden");
+    elements.lightboxVideo.classList.remove("hidden");
+    elements.lightboxVideo.src = `/api/media/${photo.id}/motion`;
+    elements.lightboxVideo.muted = true;
+    elements.lightboxVideo.loop = true;
+    elements.lightboxVideo.play().catch((err) => {
+      console.warn("Motion video playback notice:", err);
+    });
+  }
+
+  function stopLivePhotoPlayback() {
+    state.isLivePhotoPlaying = false;
+    if (elements.lightboxLiveBtn) {
+      elements.lightboxLiveBtn.classList.remove("playing");
+    }
+    const currentPhoto = state.photos[state.lightboxIndex];
+    if (currentPhoto && currentPhoto.media_type !== "video") {
+      elements.lightboxVideo.pause();
+      elements.lightboxVideo.src = "";
+      elements.lightboxVideo.classList.add("hidden");
+      elements.lightboxImg.classList.remove("hidden");
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Duplicates & Storage Cleaner Assistant (Fase 2)
+  // --------------------------------------------------------------------------
+  async function updateDuplicatesBadge() {
+    if (!elements.duplicatesBadgeCount) return;
+    try {
+      const res = await fetch("/api/duplicates");
+      if (!res.ok) return;
+      const data = await res.json();
+      const groups = data.groups || data.duplicate_groups || [];
+      state.duplicateGroups = groups;
+      let totalCopies = 0;
+      groups.forEach((g) => {
+        if (g.photos && g.photos.length > 1) {
+          totalCopies += g.photos.length - 1;
+        }
+      });
+
+      if (totalCopies > 0) {
+        elements.duplicatesBadgeCount.textContent = totalCopies;
+        elements.duplicatesBadgeCount.classList.remove("hidden");
+      } else {
+        elements.duplicatesBadgeCount.classList.add("hidden");
+      }
+    } catch (e) {
+      console.warn("Failed to check duplicates count", e);
+    }
+  }
+
+  async function showDuplicatesView() {
+    state.currentCategory = "duplicates";
+    elements.timelineContainer.classList.add("hidden");
+    elements.timelineScrubber.classList.add("hidden");
+    elements.albumContainer.classList.add("hidden");
+    elements.trashContainer.classList.add("hidden");
+    elements.mapContainer.classList.add("hidden");
+    elements.filterBanner.classList.add("hidden");
+    elements.duplicatesContainer.classList.remove("hidden");
+
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    if (elements.duplicatesChip) elements.duplicatesChip.classList.add("active");
+
+    await loadDuplicates();
+  }
+
+  function hideDuplicatesView() {
+    elements.duplicatesContainer.classList.add("hidden");
+    state.selectedDuplicates.clear();
+    updateDuplicatesSelectedUI();
+  }
+
+  async function loadDuplicates() {
+    elements.duplicatesGroupsList.innerHTML = '<div class="spinner-small" style="margin: 40px auto;"></div>';
+    elements.duplicatesSummaryBadge.textContent = "Mendeteksi...";
+    state.selectedDuplicates.clear();
+    updateDuplicatesSelectedUI();
+
+    try {
+      const res = await fetch("/api/duplicates");
+      const data = await res.json();
+      const groups = data.groups || data.duplicate_groups || [];
+      state.duplicateGroups = groups;
+
+      let totalCopies = 0;
+      let totalSavableBytes = 0;
+      groups.forEach((g) => {
+        if (g.photos && g.photos.length > 1) {
+          totalCopies += g.photos.length - 1;
+          totalSavableBytes += (g.savable_bytes || g.potential_savings_bytes || 0);
+        }
+      });
+
+      if (groups.length === 0) {
+        elements.duplicatesGroupsList.innerHTML = "";
+        elements.duplicatesEmptyState.classList.remove("hidden");
+        elements.duplicatesSummaryBadge.textContent = "0 Duplikat";
+        elements.duplicatesBadgeCount.classList.add("hidden");
+        elements.duplicatesAutoSelectBtn.disabled = true;
+        elements.duplicatesDeleteSelectedBtn.disabled = true;
+        return;
+      }
+
+      elements.duplicatesEmptyState.classList.add("hidden");
+      elements.duplicatesAutoSelectBtn.disabled = false;
+      elements.duplicatesDeleteSelectedBtn.disabled = false;
+      elements.duplicatesSummaryBadge.textContent = `${groups.length} Grup (${totalCopies} duplikat • Hemat ${formatBytes(totalSavableBytes)})`;
+      if (elements.duplicatesBadgeCount) {
+        elements.duplicatesBadgeCount.textContent = totalCopies;
+        elements.duplicatesBadgeCount.classList.remove("hidden");
+      }
+
+      elements.duplicatesGroupsList.innerHTML = "";
+      groups.forEach((group, gIdx) => {
+        const groupCard = document.createElement("div");
+        groupCard.className = "duplicate-group-card";
+
+        const isExact = (group.type === "exact_duplicate" || group.group_type === "exact_duplicate");
+        const badgeClass = isExact ? "dup-group-badge" : "dup-group-badge near_duplicate";
+        const badgeText = isExact ? "100% IDENTIK" : "FOTO SERUPA / BURST";
+        const savableGroupBytes = group.savable_bytes || group.potential_savings_bytes || 0;
+
+        groupCard.innerHTML = `
+          <div class="dup-group-header">
+            <div class="dup-group-meta">
+              <span class="${badgeClass}">${badgeText}</span>
+              <span class="dup-group-reason">${escapeHtml(group.reason)}</span>
+            </div>
+            <span class="dup-savings-badge">Hemat ${formatBytes(savableGroupBytes)}</span>
+          </div>
+          <div class="dup-photos-grid" id="dupGroupGrid_${gIdx}"></div>
+        `;
+
+        const grid = groupCard.querySelector(`#dupGroupGrid_${gIdx}`);
+        group.photos.forEach((photo, pIdx) => {
+          const isBest = pIdx === 0;
+          const photoCard = document.createElement("div");
+          photoCard.className = `dup-photo-card ${isBest ? "recommended-keep" : ""}`;
+          photoCard.setAttribute("data-photo-id", photo.id);
+
+          photoCard.innerHTML = `
+            <div class="dup-photo-thumb-wrap">
+              <span class="dup-tag-pill ${isBest ? "best" : "copy"}">${isBest ? "BEST" : "COPY"}</span>
+              <div class="dup-checkbox-wrap">
+                <input type="checkbox" class="dup-check" data-id="${photo.id}" ${isBest ? "disabled" : ""} />
+              </div>
+              <img src="/api/thumbnails/${photo.id}" loading="lazy" alt="${escapeHtml(photo.filename)}" onerror="this.src='/api/media/${photo.id}'" />
+            </div>
+            <div class="dup-photo-info">
+              <span class="dup-filename" title="${escapeHtml(photo.filename)}">${escapeHtml(photo.filename)}</span>
+              <span class="dup-dimensions">${photo.width || "?"}×${photo.height || "?"} • ${formatBytes(photo.file_size)}</span>
+            </div>
+          `;
+
+          const imgWrap = photoCard.querySelector(".dup-photo-thumb-wrap img");
+          imgWrap.addEventListener("click", () => {
+            state.photos = group.photos;
+            openLightbox(photo.id);
+          });
+
+          const checkbox = photoCard.querySelector(".dup-check");
+          if (!isBest) {
+            checkbox.addEventListener("change", (e) => {
+              if (e.target.checked) {
+                state.selectedDuplicates.add(photo.id);
+                photoCard.classList.add("selected");
+              } else {
+                state.selectedDuplicates.delete(photo.id);
+                photoCard.classList.remove("selected");
+              }
+              updateDuplicatesSelectedUI();
+            });
+          }
+
+          grid.appendChild(photoCard);
+        });
+
+        elements.duplicatesGroupsList.appendChild(groupCard);
+      });
+    } catch (e) {
+      console.error("Gagal memuat duplikat", e);
+      elements.duplicatesGroupsList.innerHTML = '<div class="empty-state">Gagal memuat duplikat.</div>';
+    }
+  }
+
+  function updateDuplicatesSelectedUI() {
+    const count = state.selectedDuplicates.size;
+    if (elements.duplicatesSelectedCount) {
+      elements.duplicatesSelectedCount.textContent = count;
+    }
+    if (elements.duplicatesDeleteSelectedBtn) {
+      elements.duplicatesDeleteSelectedBtn.disabled = count === 0;
+    }
+  }
+
+  function autoSelectDuplicates() {
+    state.selectedDuplicates.clear();
+    const checkboxes = elements.duplicatesGroupsList.querySelectorAll(".dup-check:not([disabled])");
+    checkboxes.forEach((cb) => {
+      cb.checked = true;
+      const id = parseInt(cb.dataset.id, 10);
+      state.selectedDuplicates.add(id);
+      const card = cb.closest(".dup-photo-card");
+      if (card) card.classList.add("selected");
+    });
+    updateDuplicatesSelectedUI();
+    showToast(`${state.selectedDuplicates.size} foto duplikat dipilih otomatis (foto BEST dipertahankan).`);
+  }
+
+  async function deleteSelectedDuplicates() {
+    if (state.selectedDuplicates.size === 0) return;
+    const ids = Array.from(state.selectedDuplicates);
+    const count = ids.length;
+
+    try {
+      const res = await fetch("/api/duplicates/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids }),
+      });
+
+      if (res.ok) {
+        showToast(`${count} foto duplikat dipindahkan ke Tempat Sampah 🗑️`);
+        state.selectedDuplicates.clear();
+        updateDuplicatesSelectedUI();
+        updateTrashBadge();
+        loadDuplicates();
+      } else {
+        showToast("Gagal memindahkan duplikat ke tempat sampah", null, null, 3000);
+      }
+    } catch (e) {
+      console.error("Error cleaning duplicates", e);
+      showToast("Terjadi kesalahan saat membersihkan duplikat", null, null, 3000);
+    }
+  }
+
   async function showTrashView() {
     state.currentCategory = "trash";
     elements.timelineContainer.classList.add("hidden");
     elements.timelineScrubber.classList.add("hidden");
     elements.albumContainer.classList.add("hidden");
+    elements.duplicatesContainer.classList.add("hidden");
     elements.filterBanner.classList.add("hidden");
     elements.trashContainer.classList.remove("hidden");
 
@@ -2196,6 +2974,7 @@
   async function showAlbumList() {
     elements.timelineContainer.classList.add("hidden");
     elements.timelineScrubber.classList.add("hidden");
+    elements.duplicatesContainer.classList.add("hidden");
     elements.albumContainer.classList.remove("hidden");
     
     elements.albumTitle.textContent = "Semua Album";
@@ -2426,6 +3205,7 @@
     elements.timelineScrubber.classList.add("hidden");
     elements.albumContainer.classList.add("hidden");
     elements.trashContainer.classList.add("hidden");
+    elements.duplicatesContainer.classList.add("hidden");
     elements.filterBanner.classList.add("hidden");
     elements.mapContainer.classList.remove("hidden");
 
@@ -2532,6 +3312,621 @@
         lightboxMiniMapInstance.setView([lat, lng], 14);
       }
     }, 150);
+  }
+
+  // ==============================================================================
+  // Photo Editor Suite (Fase 6)
+  // ==============================================================================
+  function openPhotoEditor(photo = null) {
+    const targetPhoto = photo || state.photos[state.lightboxIndex];
+    if (!targetPhoto) return;
+
+    if (targetPhoto.media_type === "video") {
+      showToast("Hanya file foto/gambar yang dapat diedit di studio.", null, null, 2500);
+      return;
+    }
+
+    if (state.isSlideshowPlaying) {
+      stopSlideshow();
+    }
+
+    state.editingPhoto = targetPhoto;
+    if (elements.editorFilename) {
+      elements.editorFilename.textContent = targetPhoto.filename || "Photo";
+    }
+
+    resetEditorState();
+
+    if (elements.editorPreviewImg) {
+      elements.editorPreviewImg.src = `/api/media/${targetPhoto.id}`;
+    }
+
+    switchEditorTab("tune");
+
+    if (elements.editorModalWrapper) {
+      elements.editorModalWrapper.classList.remove("hidden");
+    }
+  }
+
+  function closePhotoEditor() {
+    if (elements.editorModalWrapper) {
+      elements.editorModalWrapper.classList.add("hidden");
+    }
+    state.editingPhoto = null;
+  }
+
+  function switchEditorTab(tab) {
+    if (tab === "tune") {
+      if (elements.tabTuneBtn) elements.tabTuneBtn.classList.add("active");
+      if (elements.tabTransformBtn) elements.tabTransformBtn.classList.remove("active");
+      if (elements.panelTune) elements.panelTune.classList.remove("hidden");
+      if (elements.panelTransform) elements.panelTransform.classList.add("hidden");
+    } else {
+      if (elements.tabTransformBtn) elements.tabTransformBtn.classList.add("active");
+      if (elements.tabTuneBtn) elements.tabTuneBtn.classList.remove("active");
+      if (elements.panelTransform) elements.panelTransform.classList.remove("hidden");
+      if (elements.panelTune) elements.panelTune.classList.add("hidden");
+    }
+  }
+
+  function toggleEditorAutoEnhance() {
+    state.editState.auto_enhance = !state.editState.auto_enhance;
+    if (elements.editorAutoEnhanceBtn) {
+      elements.editorAutoEnhanceBtn.classList.toggle("active", state.editState.auto_enhance);
+    }
+    updateEditorPreviewFilters();
+  }
+
+  function updateEditorPreviewFilters() {
+    if (!elements.editorPreviewImg) return;
+
+    const b = 1 + (state.editState.brightness / 100);
+    const c = 1 + (state.editState.contrast / 100);
+    const s = 1 + (state.editState.saturation / 100);
+
+    const w = state.editState.warmth;
+    let sepia = 0;
+    let hue = 0;
+    if (w > 0) {
+      sepia = (w / 100) * 0.35;
+      hue = (w / 100) * -10;
+    } else if (w < 0) {
+      hue = (Math.abs(w) / 100) * 15;
+    }
+
+    let filterStr = `brightness(${b}) contrast(${c}) saturate(${s})`;
+    if (sepia > 0) filterStr += ` sepia(${sepia})`;
+    if (hue !== 0) filterStr += ` hue-rotate(${hue}deg)`;
+    if (state.editState.auto_enhance) {
+      filterStr += " contrast(1.1) saturate(1.15)";
+    }
+
+    elements.editorPreviewImg.style.filter = filterStr;
+
+    const rot = state.editState.rotate % 360;
+    const scaleX = state.editState.flip_h ? -1 : 1;
+    elements.editorPreviewImg.style.transform = `rotate(${rot}deg) scaleX(${scaleX})`;
+  }
+
+  function resetEditorState() {
+    state.editState = {
+      rotate: 0,
+      flip_h: false,
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      warmth: 0,
+      auto_enhance: false,
+    };
+
+    if (elements.sliderBrightness) elements.sliderBrightness.value = 0;
+    if (elements.sliderContrast) elements.sliderContrast.value = 0;
+    if (elements.sliderSaturation) elements.sliderSaturation.value = 0;
+    if (elements.sliderWarmth) elements.sliderWarmth.value = 0;
+
+    if (elements.valBrightness) elements.valBrightness.textContent = "0";
+    if (elements.valContrast) elements.valContrast.textContent = "0";
+    if (elements.valSaturation) elements.valSaturation.textContent = "0";
+    if (elements.valWarmth) elements.valWarmth.textContent = "0";
+
+    if (elements.editorAutoEnhanceBtn) {
+      elements.editorAutoEnhanceBtn.classList.remove("active");
+    }
+
+    updateEditorPreviewFilters();
+  }
+
+  async function savePhotoEdits(saveAsCopy = true) {
+    if (!state.editingPhoto) return;
+    const photo = state.editingPhoto;
+
+    const originalBtnText = elements.editorSaveCopyBtn ? elements.editorSaveCopyBtn.textContent : "Simpan";
+    if (elements.editorSaveCopyBtn) {
+      elements.editorSaveCopyBtn.disabled = true;
+      elements.editorSaveCopyBtn.textContent = "Menyimpan...";
+    }
+
+    try {
+      const payload = {
+        crop: null,
+        rotate: state.editState.rotate,
+        flip_h: state.editState.flip_h,
+        brightness: state.editState.brightness,
+        contrast: state.editState.contrast,
+        saturation: state.editState.saturation,
+        warmth: state.editState.warmth,
+        auto_enhance: state.editState.auto_enhance,
+        save_as_copy: saveAsCopy,
+      };
+
+      const res = await fetch(`/api/photos/${photo.id}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Gagal menyimpan editan foto");
+      }
+
+      const result = await res.json();
+      closePhotoEditor();
+
+      showToast(
+        saveAsCopy
+          ? `Salinan baru tersimpan: ${result.filename} ✨`
+          : "Perubahan foto berhasil disimpan!",
+        null,
+        null,
+        3500
+      );
+
+      // Refresh photo gallery timeline
+      fetchPhotos(true);
+
+      // If lightbox is currently showing this photo and overwritten
+      if (!saveAsCopy && elements.lightboxImg && state.photos[state.lightboxIndex]?.id === photo.id) {
+        elements.lightboxImg.src = `/api/media/${photo.id}?t=${Date.now()}`;
+      }
+    } catch (e) {
+      console.error("Save edits error:", e);
+      showToast(`Error: ${e.message}`, null, null, 4000);
+    } finally {
+      if (elements.editorSaveCopyBtn) {
+        elements.editorSaveCopyBtn.disabled = false;
+        elements.editorSaveCopyBtn.textContent = originalBtnText;
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Phase 9: Home Wi-Fi LAN & Mobile Access
+  // --------------------------------------------------------------------------
+  async function openLanModal() {
+    if (!elements.lanModalWrapper) return;
+    elements.lanModalWrapper.classList.remove("hidden");
+    elements.lanQrContainer.innerHTML = '<div class="spinner-small" style="margin: auto;"></div>';
+    elements.lanUrlInput.value = "Memuat...";
+
+    try {
+      const res = await fetch("/api/system/network");
+      if (!res.ok) throw new Error("Gagal mengambil info jaringan");
+      const data = await res.json();
+      
+      elements.lanUrlInput.value = data.lan_url;
+      elements.lanQrContainer.innerHTML = data.qr_code_svg;
+    } catch (e) {
+      console.error("Error fetching network info", e);
+      elements.lanQrContainer.innerHTML = '<span style="color:#ea4335; font-size:0.8rem;">Gagal membuat kode QR</span>';
+      elements.lanUrlInput.value = window.location.origin;
+    }
+  }
+
+  function closeLanModal() {
+    if (elements.lanModalWrapper) {
+      elements.lanModalWrapper.classList.add("hidden");
+    }
+  }
+
+  function copyLanUrl() {
+    if (!elements.lanUrlInput) return;
+    elements.lanUrlInput.select();
+    navigator.clipboard.writeText(elements.lanUrlInput.value)
+      .then(() => showToast("URL lokal berhasil disalin ke clipboard! 📋"))
+      .catch(() => showToast("Gagal menyalin URL"));
+  }
+
+  // --------------------------------------------------------------------------
+  // Phase 9: Locked Folder & PIN Keypad Security
+  // --------------------------------------------------------------------------
+  async function updateLockedBadge() {
+    try {
+      const res = await fetch("/api/locked/status");
+      if (!res.ok) return;
+      const data = await res.json();
+      const count = data.locked_count || 0;
+      if (elements.lockedBadgeCount) {
+        elements.lockedBadgeCount.textContent = count;
+        elements.lockedBadgeCount.classList.toggle("hidden", count === 0);
+      }
+      if (elements.lockedCountBadge) {
+        elements.lockedCountBadge.textContent = `${count} item`;
+      }
+    } catch (e) {
+      console.warn("Failed to check locked status", e);
+    }
+  }
+
+  async function openLockedFolderWithPin() {
+    if (state.lockedToken) {
+      showLockedView();
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/locked/status");
+      const data = await res.json();
+
+      state.isPinSetupMode = !data.has_pin;
+      state.pinSetupFirstPass = "";
+      state.lockedPinInput = "";
+      updatePinDotsUI();
+
+      if (state.isPinSetupMode) {
+        elements.pinModalTitle.textContent = "Buat PIN Baru";
+        elements.pinModalSubtitle.textContent = "Tentukan 4-digit PIN untuk Folder Terkunci Anda";
+      } else {
+        elements.pinModalTitle.textContent = "Buka Folder Terkunci";
+        elements.pinModalSubtitle.textContent = "Masukkan 4-digit PIN keamanan Anda";
+      }
+
+      elements.pinErrorText.classList.add("hidden");
+      elements.pinModalWrapper.classList.remove("hidden");
+    } catch (e) {
+      console.error("Error opening locked folder", e);
+      showToast("Gagal memeriksa status PIN");
+    }
+  }
+
+  function closePinModal() {
+    if (elements.pinModalWrapper) {
+      elements.pinModalWrapper.classList.add("hidden");
+    }
+    state.lockedPinInput = "";
+    state.pinSetupFirstPass = "";
+    updatePinDotsUI();
+
+    if (state.currentCategory === "locked" && !state.lockedToken) {
+      document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+      const allChip = document.querySelector('[data-category="all"]');
+      if (allChip) allChip.classList.add("active");
+      state.currentCategory = "all";
+      fetchPhotos(true);
+    }
+  }
+
+  function updatePinDotsUI() {
+    const len = state.lockedPinInput.length;
+    for (let i = 0; i < 4; i++) {
+      const dot = document.getElementById(`pinDot${i}`);
+      if (dot) {
+        dot.classList.toggle("filled", i < len);
+      }
+    }
+  }
+
+  async function handlePinDigit(digit) {
+    if (state.lockedPinInput.length >= 4) return;
+    state.lockedPinInput += digit;
+    updatePinDotsUI();
+    elements.pinErrorText.classList.add("hidden");
+
+    if (state.lockedPinInput.length === 4) {
+      await processCompletedPin();
+    }
+  }
+
+  function handlePinBackspace() {
+    if (state.lockedPinInput.length > 0) {
+      state.lockedPinInput = state.lockedPinInput.slice(0, -1);
+      updatePinDotsUI();
+    }
+  }
+
+  function handlePinClear() {
+    state.lockedPinInput = "";
+    updatePinDotsUI();
+  }
+
+  async function processCompletedPin() {
+    const enteredPin = state.lockedPinInput;
+
+    if (state.isPinSetupMode) {
+      if (!state.pinSetupFirstPass) {
+        state.pinSetupFirstPass = enteredPin;
+        state.lockedPinInput = "";
+        updatePinDotsUI();
+        elements.pinModalTitle.textContent = "Konfirmasi PIN";
+        elements.pinModalSubtitle.textContent = "Masukkan 4-digit PIN sekali lagi";
+        return;
+      }
+
+      if (enteredPin !== state.pinSetupFirstPass) {
+        elements.pinErrorText.textContent = "PIN tidak cocok. Ulangi pembuatan PIN.";
+        elements.pinErrorText.classList.remove("hidden");
+        state.pinSetupFirstPass = "";
+        state.lockedPinInput = "";
+        updatePinDotsUI();
+        elements.pinModalTitle.textContent = "Buat PIN Baru";
+        elements.pinModalSubtitle.textContent = "Tentukan 4-digit PIN untuk Folder Terkunci Anda";
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/locked/setup-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: enteredPin })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast("PIN keamanan berhasil dibuat! 🔒");
+          const vRes = await fetch("/api/locked/verify-pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin: enteredPin })
+          });
+          const vData = await vRes.json();
+          if (vRes.ok && vData.token) {
+            state.lockedToken = vData.token;
+            elements.pinModalWrapper.classList.add("hidden");
+            showLockedView();
+          }
+        } else {
+          elements.pinErrorText.textContent = data.detail || "Gagal membuat PIN";
+          elements.pinErrorText.classList.remove("hidden");
+        }
+      } catch (e) {
+        elements.pinErrorText.textContent = "Terjadi kesalahan";
+        elements.pinErrorText.classList.remove("hidden");
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/locked/verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: enteredPin })
+      });
+      const data = await res.json();
+      if (res.ok && data.token) {
+        state.lockedToken = data.token;
+        elements.pinModalWrapper.classList.add("hidden");
+        showLockedView();
+      } else {
+        elements.pinErrorText.textContent = "PIN salah. Silakan coba lagi.";
+        elements.pinErrorText.classList.remove("hidden");
+        state.lockedPinInput = "";
+        updatePinDotsUI();
+      }
+    } catch (e) {
+      elements.pinErrorText.textContent = "Gagal memverifikasi PIN";
+      elements.pinErrorText.classList.remove("hidden");
+      state.lockedPinInput = "";
+      updatePinDotsUI();
+    }
+  }
+
+  async function showLockedView() {
+    state.currentCategory = "locked";
+    elements.timelineContainer.classList.add("hidden");
+    elements.timelineScrubber.classList.add("hidden");
+    elements.albumContainer.classList.add("hidden");
+    elements.trashContainer.classList.add("hidden");
+    elements.duplicatesContainer.classList.add("hidden");
+    elements.filterBanner.classList.add("hidden");
+    elements.lockedContainer.classList.remove("hidden");
+
+    clearSelection();
+    elements.lockedGrid.innerHTML = '<div class="spinner-small" style="margin: 40px auto; grid-column: 1 / -1;"></div>';
+
+    try {
+      const res = await fetch(`/api/locked/photos?token=${encodeURIComponent(state.lockedToken || "")}`);
+      if (!res.ok) {
+        if (res.status === 401) {
+          state.lockedToken = null;
+          showToast("Sesi PIN berakhir. Masukkan PIN kembali.");
+          openLockedFolderWithPin();
+          return;
+        }
+        throw new Error("Gagal memuat item terkunci");
+      }
+
+      const data = await res.json();
+      const photos = data.photos || [];
+      state.photos = photos;
+
+      updateLockedBadge();
+
+      if (photos.length === 0) {
+        elements.lockedGrid.innerHTML = "";
+        elements.lockedEmptyState.classList.remove("hidden");
+      } else {
+        elements.lockedEmptyState.classList.add("hidden");
+        elements.lockedGrid.innerHTML = "";
+        photos.forEach((photo) => {
+          elements.lockedGrid.appendChild(createPhotoTile(photo));
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load locked photos", e);
+      elements.lockedGrid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">Error loading locked folder</div>';
+    }
+  }
+
+  function hideLockedView() {
+    if (elements.lockedContainer) {
+      elements.lockedContainer.classList.add("hidden");
+    }
+  }
+
+  function relockFolder() {
+    state.lockedToken = null;
+    showToast("Folder Terkunci telah dikunci kembali 🔒");
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    const allChip = document.querySelector('[data-category="all"]');
+    if (allChip) allChip.classList.add("active");
+    state.currentCategory = "all";
+    hideLockedView();
+    fetchPhotos(true);
+  }
+
+  async function lockSelectedPhotos() {
+    if (state.selectedPhotos.size === 0) return;
+    const ids = Array.from(state.selectedPhotos);
+    const count = ids.length;
+
+    try {
+      const res = await fetch("/api/photos/lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        ids.forEach((id) => {
+          const tile = document.querySelector(`.photo-tile[data-id="${id}"]`);
+          if (tile) tile.remove();
+        });
+        state.photos = state.photos.filter((p) => !ids.includes(p.id));
+        clearSelection();
+        loadTimelineHierarchy();
+        updateLockedBadge();
+        showToast(`${count} foto disembunyikan ke Folder Terkunci 🔒`);
+      } else {
+        showToast("Gagal mengunci foto", null, null, 3000);
+      }
+    } catch (e) {
+      console.error("Error locking photos", e);
+      showToast("Terjadi kesalahan saat mengunci foto");
+    }
+  }
+
+  async function unlockSelectedPhotos(photoIds) {
+    const ids = photoIds || (state.selectedPhotos.size > 0 ? Array.from(state.selectedPhotos) : []);
+    if (ids.length === 0) return;
+
+    try {
+      const res = await fetch("/api/photos/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids, token: state.lockedToken || "" })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`${ids.length} foto dikeluarkan dari Folder Terkunci ke galeri ✨`);
+        clearSelection();
+        updateLockedBadge();
+        loadTimelineHierarchy();
+        if (state.currentCategory === "locked") {
+          await showLockedView();
+        } else {
+          await fetchPhotos(true);
+        }
+      } else {
+        showToast("Gagal mengeluarkan foto");
+      }
+    } catch (e) {
+      console.error("Error unlocking photos", e);
+      showToast("Terjadi kesalahan saat membuka kunci");
+    }
+  }
+
+  async function lockCurrentLightboxPhoto() {
+    if (state.lightboxIndex === -1 || !state.photos[state.lightboxIndex]) return;
+    const photo = state.photos[state.lightboxIndex];
+    await lockSelectedPhotosByIds([photo.id]);
+    closeLightbox();
+  }
+
+  async function unlockCurrentLightboxPhoto() {
+    if (state.lightboxIndex === -1 || !state.photos[state.lightboxIndex]) return;
+    const photo = state.photos[state.lightboxIndex];
+    await unlockSelectedPhotos([photo.id]);
+    closeLightbox();
+  }
+
+  async function lockSelectedPhotosByIds(ids) {
+    try {
+      const res = await fetch("/api/photos/lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo_ids: ids })
+      });
+      if (res.ok) {
+        showToast(`${ids.length} foto disembunyikan ke Folder Terkunci 🔒`);
+        updateLockedBadge();
+        loadTimelineHierarchy();
+        fetchPhotos(true);
+      }
+    } catch (e) {}
+  }
+
+  // --------------------------------------------------------------------------
+  // Phase 9: Live Text / OCR Engine
+  // --------------------------------------------------------------------------
+  async function triggerPhotoOcr() {
+    if (state.lightboxIndex === -1 || !state.photos[state.lightboxIndex]) return;
+    const photo = state.photos[state.lightboxIndex];
+
+    elements.ocrModalWrapper.classList.remove("hidden");
+    elements.ocrLoadingState.classList.remove("hidden");
+    elements.ocrTextContainer.classList.add("hidden");
+    elements.ocrTextarea.value = "";
+    elements.ocrCharCount.textContent = "0 karakter";
+
+    try {
+      const res = await fetch(`/api/photos/${photo.id}/ocr`, { method: "POST" });
+      const data = await res.json();
+      
+      elements.ocrLoadingState.classList.add("hidden");
+      elements.ocrTextContainer.classList.remove("hidden");
+
+      const text = (data.ocr_text || "").trim();
+      elements.ocrTextarea.value = text;
+      elements.ocrCharCount.textContent = `${text.length} karakter terdeteksi`;
+
+      if (!text) {
+        elements.ocrTextarea.placeholder = "Tidak ada teks yang terdeteksi pada foto ini.";
+      }
+    } catch (e) {
+      console.error("OCR trigger error", e);
+      elements.ocrLoadingState.classList.add("hidden");
+      elements.ocrTextContainer.classList.remove("hidden");
+      elements.ocrTextarea.value = "";
+      elements.ocrTextarea.placeholder = "Gagal memproses OCR pada gambar.";
+      showToast("Gagal mengekstrak teks");
+    }
+  }
+
+  function closeOcrModal() {
+    if (elements.ocrModalWrapper) {
+      elements.ocrModalWrapper.classList.add("hidden");
+    }
+  }
+
+  function copyOcrText() {
+    if (!elements.ocrTextarea) return;
+    const text = elements.ocrTextarea.value.trim();
+    if (!text) {
+      showToast("Tidak ada teks untuk disalin");
+      return;
+    }
+    navigator.clipboard.writeText(text)
+      .then(() => showToast("Teks OCR berhasil disalin! 📝"))
+      .catch(() => showToast("Gagal menyalin teks"));
   }
 
   // --- Bootstrap ---
