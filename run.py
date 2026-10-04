@@ -76,14 +76,18 @@ def check_environment(source_dir: Path, host: str, port: int):
         print("  [!] PyTorch not found. AI Vision Engine will use heuristic fallback.")
 
     try:
-        from backend.network_helper import get_local_ip
+        from backend.network_helper import get_local_ip, get_tailscale_ip
         local_ip = get_local_ip()
+        ts_ip = get_tailscale_ip()
     except Exception:
         local_ip = host
+        ts_ip = None
 
-    print(f"  [+] Local Browser  : http://localhost:{port}")
+    print(f"  [+] Local Browser   : http://localhost:{port}")
     if local_ip not in ("127.0.0.1", "localhost"):
-        print(f"  [+] Mobile / Wi-Fi : http://{local_ip}:{port} (Buka di browser HP Anda 📱)")
+        print(f"  [+] Home Wi-Fi LAN  : http://{local_ip}:{port} (Buka di browser HP Anda 📱)")
+    if ts_ip:
+        print(f"  [+] Tailscale (VPN) : http://{ts_ip}:{port} (Akses dari mana saja di HP Anda 🚀)")
     print("=" * 72)
 
 

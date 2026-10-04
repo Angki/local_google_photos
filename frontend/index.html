@@ -1047,10 +1047,14 @@ CHANGELOG:
         </button>
       </div>
       <div class="sync-modal-body lan-modal-body">
+        <div class="lan-network-tabs" id="lanNetworkTabs">
+          <button type="button" class="lan-tab active" id="tabLanWifiBtn" data-mode="wifi">📶 Wi-Fi Rumah</button>
+          <button type="button" class="lan-tab" id="tabLanTailscaleBtn" data-mode="tailscale">🚀 Tailscale VPN</button>
+        </div>
         <div class="lan-qr-container" id="lanQrContainer">
           <!-- Standalone SVG QR Code injected here -->
         </div>
-        <p class="lan-guide-text">
+        <p class="lan-guide-text" id="lanGuideText">
           Scan kode QR ini menggunakan kamera ponsel Anda atau buka tautan di bawah pada browser HP:
         </p>
         <div class="lan-url-box">

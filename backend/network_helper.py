@@ -7,7 +7,7 @@
 import io
 import logging
 import socket
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import qrcode
 import qrcode.image.svg
 
@@ -56,25 +56,53 @@ def generate_qr_code_svg(url: str) -> str:
     return stream.getvalue().decode("utf-8")
 
 
+def get_tailscale_ip() -> Optional[str]:
+    """
+    Detects active Tailscale CGNAT IPv4 address (100.64.0.0/10).
+    """
+    try:
+        _, _, ip_list = socket.gethostbyname_ex(socket.gethostname())
+        for ip in ip_list:
+            if ip.startswith("100."):
+                return ip
+    except Exception:
+        pass
+    return None
+
+
 def get_network_info(port: int = 8000) -> Dict[str, Any]:
     """
     Returns complete local network information, URL, and pre-rendered SVG QR code.
+    Includes Tailscale VPN detection if active on the host machine.
     """
     local_ip = get_local_ip()
     lan_url = f"http://{local_ip}:{port}"
     localhost_url = f"http://localhost:{port}"
 
+    tailscale_ip = get_tailscale_ip()
+    tailscale_url = f"http://{tailscale_ip}:{port}" if tailscale_ip else None
+
     qr_svg = ""
+    tailscale_qr_svg = ""
     try:
         qr_svg = generate_qr_code_svg(lan_url)
     except Exception as e:
         logger.warning(f"Failed to generate QR code SVG: {e}")
 
+    if tailscale_url:
+        try:
+            tailscale_qr_svg = generate_qr_code_svg(tailscale_url)
+        except Exception as e:
+            logger.warning(f"Failed to generate Tailscale QR code SVG: {e}")
+
     return {
         "local_ip": local_ip,
+        "tailscale_ip": tailscale_ip,
         "port": port,
         "lan_url": lan_url,
+        "tailscale_url": tailscale_url,
         "localhost_url": localhost_url,
         "qr_svg": qr_svg,
         "qr_code_svg": qr_svg,
+        "tailscale_qr_svg": tailscale_qr_svg,
     }

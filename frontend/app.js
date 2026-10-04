@@ -257,7 +257,11 @@
     lanModalWrapper: document.getElementById("lanModalWrapper"),
     lanModalBackdrop: document.getElementById("lanModalBackdrop"),
     lanModalCloseBtn: document.getElementById("lanModalCloseBtn"),
+    lanNetworkTabs: document.getElementById("lanNetworkTabs"),
+    tabLanWifiBtn: document.getElementById("tabLanWifiBtn"),
+    tabLanTailscaleBtn: document.getElementById("tabLanTailscaleBtn"),
     lanQrContainer: document.getElementById("lanQrContainer"),
+    lanGuideText: document.getElementById("lanGuideText"),
     lanUrlInput: document.getElementById("lanUrlInput"),
     lanCopyUrlBtn: document.getElementById("lanCopyUrlBtn"),
 
@@ -1953,6 +1957,12 @@
     if (elements.lanCopyUrlBtn) {
       elements.lanCopyUrlBtn.addEventListener("click", copyLanUrl);
     }
+    if (elements.tabLanWifiBtn) {
+      elements.tabLanWifiBtn.addEventListener("click", () => setLanModalMode("wifi"));
+    }
+    if (elements.tabLanTailscaleBtn) {
+      elements.tabLanTailscaleBtn.addEventListener("click", () => setLanModalMode("tailscale"));
+    }
 
     // --- Locked Folder & PIN Events (Phase 9) ---
     if (elements.lockedBackBtn) {
@@ -3622,8 +3632,37 @@
   }
 
   // --------------------------------------------------------------------------
-  // Phase 9: Home Wi-Fi LAN & Mobile Access
+  // Phase 9: Home Wi-Fi LAN & Tailscale Mobile Access
   // --------------------------------------------------------------------------
+  let currentNetworkData = null;
+  let currentNetworkMode = "wifi";
+
+  function setLanModalMode(mode) {
+    if (!currentNetworkData) return;
+    currentNetworkMode = mode;
+
+    if (elements.tabLanWifiBtn) {
+      elements.tabLanWifiBtn.classList.toggle("active", mode === "wifi");
+    }
+    if (elements.tabLanTailscaleBtn) {
+      elements.tabLanTailscaleBtn.classList.toggle("active", mode === "tailscale");
+    }
+
+    if (mode === "tailscale" && currentNetworkData.tailscale_url) {
+      elements.lanUrlInput.value = currentNetworkData.tailscale_url;
+      elements.lanQrContainer.innerHTML = currentNetworkData.tailscale_qr_svg || currentNetworkData.qr_code_svg;
+      if (elements.lanGuideText) {
+        elements.lanGuideText.textContent = "Scan kode QR ini menggunakan kamera ponsel Anda (pastikan Tailscale di HP aktif):";
+      }
+    } else {
+      elements.lanUrlInput.value = currentNetworkData.lan_url;
+      elements.lanQrContainer.innerHTML = currentNetworkData.qr_code_svg;
+      if (elements.lanGuideText) {
+        elements.lanGuideText.textContent = "Scan kode QR ini menggunakan kamera ponsel Anda atau buka tautan di bawah pada browser HP (harus 1 Wi-Fi):";
+      }
+    }
+  }
+
   async function openLanModal() {
     if (!elements.lanModalWrapper) return;
     elements.lanModalWrapper.classList.remove("hidden");
@@ -3634,9 +3673,23 @@
       const res = await fetch("/api/system/network");
       if (!res.ok) throw new Error("Gagal mengambil info jaringan");
       const data = await res.json();
-      
-      elements.lanUrlInput.value = data.lan_url;
-      elements.lanQrContainer.innerHTML = data.qr_code_svg;
+      currentNetworkData = data;
+
+      if (elements.tabLanTailscaleBtn) {
+        if (data.tailscale_ip) {
+          elements.tabLanTailscaleBtn.style.display = "";
+          elements.tabLanTailscaleBtn.title = `Tailscale IP: ${data.tailscale_ip}`;
+        } else {
+          elements.tabLanTailscaleBtn.style.display = "none";
+        }
+      }
+
+      // Default to wifi if tailscale isn't active
+      if (currentNetworkMode === "tailscale" && !data.tailscale_ip) {
+        currentNetworkMode = "wifi";
+      }
+
+      setLanModalMode(currentNetworkMode);
     } catch (e) {
       console.error("Error fetching network info", e);
       elements.lanQrContainer.innerHTML = '<span style="color:#ea4335; font-size:0.8rem;">Gagal membuat kode QR</span>';
@@ -3653,8 +3706,9 @@
   function copyLanUrl() {
     if (!elements.lanUrlInput) return;
     elements.lanUrlInput.select();
+    const modeLabel = currentNetworkMode === "tailscale" ? "Tailscale" : "Wi-Fi lokal";
     navigator.clipboard.writeText(elements.lanUrlInput.value)
-      .then(() => showToast("URL lokal berhasil disalin ke clipboard! 📋"))
+      .then(() => showToast(`URL ${modeLabel} berhasil disalin ke clipboard! 📋`))
       .catch(() => showToast("Gagal menyalin URL"));
   }
 
