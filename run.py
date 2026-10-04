@@ -75,7 +75,15 @@ def check_environment(source_dir: Path, host: str, port: int):
     except ImportError:
         print("  [!] PyTorch not found. AI Vision Engine will use heuristic fallback.")
 
-    print(f"  [+] Web Server   : http://{host}:{port}")
+    try:
+        from backend.network_helper import get_local_ip
+        local_ip = get_local_ip()
+    except Exception:
+        local_ip = host
+
+    print(f"  [+] Local Browser  : http://localhost:{port}")
+    if local_ip not in ("127.0.0.1", "localhost"):
+        print(f"  [+] Mobile / Wi-Fi : http://{local_ip}:{port} (Buka di browser HP Anda 📱)")
     print("=" * 72)
 
 
