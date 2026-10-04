@@ -41,7 +41,10 @@ from backend.database import (
     update_thumbnail_path,
     upsert_photo,
 )
+from backend.deduplicator import compute_quick_file_hash
+from backend.geo_resolver import backfill_missing_locations, resolve_location
 from backend.metadata_parser import parse_photo_metadata
+from backend.motion_photo import detect_motion_photo
 from backend.thumbnail_manager import generate_thumbnail
 
 logger = logging.getLogger("LibraryScanner")
@@ -246,6 +249,19 @@ class LibraryScanner:
                         self.notify_progress()
                         continue
 
+                # 1. Resolve offline reverse geocoding if photo has GPS coordinates
+                geo_info = {}
+                if meta.get("has_geo") and meta.get("latitude") and meta.get("longitude"):
+                    geo_info = resolve_location(meta["latitude"], meta["longitude"])
+
+                # 2. Detect iPhone Live Photo companion or Android Motion Photo
+                is_live, motion_src = False, None
+                if media_type == "image":
+                    is_live, motion_src = detect_motion_photo(media_path)
+
+                # 3. Quick content hash for rapid deduplication
+                quick_hash = compute_quick_file_hash(str(media_path.resolve()))
+
                 record = {
                     "file_path": str(media_path.resolve()),
                     "filename": media_path.name,
@@ -269,6 +285,14 @@ class LibraryScanner:
                     "device_folder": meta["device_folder"],
                     "app_source": meta["app_source"],
                     "google_url": meta["google_url"],
+                    "city": geo_info.get("city", ""),
+                    "state": geo_info.get("state", ""),
+                    "country": geo_info.get("country", ""),
+                    "country_code": geo_info.get("country_code", ""),
+                    "location_label": geo_info.get("location_label", ""),
+                    "is_live_photo": 1 if is_live else 0,
+                    "motion_video_path": motion_src,
+                    "file_hash": quick_hash,
                 }
 
                 p_id = upsert_photo(record)
@@ -357,3 +381,101 @@ class LibraryScanner:
             self.state = ScannerState.ERROR
             self.error_message = str(e)
             self.notify_progress(force=True)
+
+
+def index_single_media_file(media_path: Path) -> Optional[int]:
+    """
+    Indexes a single newly discovered media file into the database,
+    resolves GPS reverse geocoding, detects Live Photo / Motion Photo,
+    generates WebP thumbnail, and returns the photo ID.
+    """
+    try:
+        if not media_path.is_file():
+            return None
+
+        ext = media_path.suffix.lower()
+        if ext not in ALL_MEDIA_EXTENSIONS:
+            return None
+
+        media_type = "video" if ext in VIDEO_EXTENSIONS else "image"
+        mime_type, _ = mimetypes.guess_type(str(media_path))
+        if not mime_type:
+            mime_type = "video/mp4" if media_type == "video" else "image/jpeg"
+
+        folder_name = media_path.parent.name
+        folder_year_match = YEAR_FOLDER_PATTERN.match(folder_name)
+        folder_year_val = int(folder_year_match.group(1)) if folder_year_match else None
+
+        stat = media_path.stat()
+        file_size = stat.st_size
+        meta = parse_photo_metadata(media_path, fallback_year=folder_year_val)
+
+        # Reverse geocoding
+        geo_info = {}
+        if meta.get("has_geo") and meta.get("latitude") and meta.get("longitude"):
+            geo_info = resolve_location(meta["latitude"], meta["longitude"])
+
+        # Live Photo / Motion Photo detection
+        is_live, motion_src = False, None
+        if media_type == "image":
+            is_live, motion_src = detect_motion_photo(media_path)
+
+        quick_hash = compute_quick_file_hash(str(media_path.resolve()))
+
+        record = {
+            "file_path": str(media_path.resolve()),
+            "filename": media_path.name,
+            "folder_year": folder_name,
+            "file_size": file_size,
+            "media_type": media_type,
+            "mime_type": mime_type,
+            "width": 0,
+            "height": 0,
+            "taken_at": meta["taken_at"],
+            "taken_year": meta["taken_year"],
+            "taken_month": meta["taken_month"],
+            "taken_day": meta["taken_day"],
+            "taken_formatted": meta["taken_formatted"],
+            "latitude": meta["latitude"],
+            "longitude": meta["longitude"],
+            "altitude": meta["altitude"],
+            "has_geo": meta["has_geo"],
+            "description": meta.get("description", ""),
+            "people": str(meta.get("people", [])),
+            "device_folder": meta.get("device_folder", ""),
+            "app_source": meta.get("app_source", ""),
+            "google_url": meta.get("google_url", ""),
+            "city": geo_info.get("city", ""),
+            "state": geo_info.get("state", ""),
+            "country": geo_info.get("country", ""),
+            "country_code": geo_info.get("country_code", ""),
+            "location_label": geo_info.get("location_label", ""),
+            "is_live_photo": 1 if is_live else 0,
+            "motion_video_path": motion_src,
+            "file_hash": quick_hash,
+        }
+
+        p_id = upsert_photo(record)
+        if not p_id:
+            return None
+
+        # Auto associate with custom album if applicable
+        if not folder_year_match:
+            try:
+                album_id = get_or_create_album(folder_name)
+                if album_id:
+                    add_photos_to_album(album_id, [p_id])
+            except Exception:
+                pass
+
+        # Generate thumbnail immediately
+        if media_type == "image":
+            thumb_res = generate_thumbnail(p_id, str(media_path), media_type)
+            if thumb_res:
+                thumb_path, w, h = thumb_res
+                update_thumbnail_path(p_id, thumb_path, w, h)
+
+        return p_id
+    except Exception as e:
+        logger.warning(f"Failed to index single file {media_path}: {e}")
+        return None

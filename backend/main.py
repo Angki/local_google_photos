@@ -55,8 +55,20 @@ async def lifespan(app: FastAPI):
     else:
         logger.info(f"Database ready with {total_photos} photos and videos.")
 
+    # Start real-time Hot Folder Watcher on SOURCE_DATA_DIR
+    from backend.watcher import folder_watcher
+    def on_watcher_media_added(photo_id: int, file_path: Path):
+        routes_module.broadcast_progress({
+            "event": "photo_added",
+            "photo_id": photo_id,
+            "filename": file_path.name
+        })
+    folder_watcher.on_new_media = on_watcher_media_added
+    folder_watcher.start()
+
     yield
     logger.info("Shutting down Google Photos Local application...")
+    folder_watcher.stop()
 
 
 # Create FastAPI instance
