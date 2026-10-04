@@ -112,6 +112,31 @@ MIGRATIONS = [
         "ALTER TABLE photos ADD COLUMN is_favorite BOOLEAN DEFAULT 0;",
         "CREATE INDEX IF NOT EXISTS idx_photos_favorite ON photos(is_favorite, deleted);",
     ]),
+    (4, "Add location (city, state, country), live photo, and duplicate hash columns", [
+        "ALTER TABLE photos ADD COLUMN city TEXT;",
+        "ALTER TABLE photos ADD COLUMN state TEXT;",
+        "ALTER TABLE photos ADD COLUMN country TEXT;",
+        "ALTER TABLE photos ADD COLUMN country_code TEXT;",
+        "ALTER TABLE photos ADD COLUMN location_label TEXT;",
+        "ALTER TABLE photos ADD COLUMN is_live_photo BOOLEAN DEFAULT 0;",
+        "ALTER TABLE photos ADD COLUMN motion_video_path TEXT;",
+        "ALTER TABLE photos ADD COLUMN file_hash TEXT;",
+        "CREATE INDEX IF NOT EXISTS idx_photos_location ON photos(city, country);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_hash ON photos(file_hash);",
+        "CREATE INDEX IF NOT EXISTS idx_photos_live ON photos(is_live_photo, deleted);",
+    ]),
+    (5, "Add OCR text search and locked folder security tables & columns", [
+        "ALTER TABLE photos ADD COLUMN ocr_text TEXT;",
+        "ALTER TABLE photos ADD COLUMN is_locked BOOLEAN DEFAULT 0;",
+        "CREATE INDEX IF NOT EXISTS idx_photos_locked ON photos(is_locked, deleted);",
+        """
+        CREATE TABLE IF NOT EXISTS security_settings (
+            key TEXT PRIMARY KEY,
+            val TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+    ]),
 ]
 
 
@@ -144,16 +169,23 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
             )
             logger.info(f"Migration v{version} applied successfully.")
 
-    # Backward compatibility safeguard: ensure deleted and is_favorite exist on legacy schemas
-    try:
-        conn.execute("ALTER TABLE photos ADD COLUMN deleted BOOLEAN DEFAULT 0;")
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        conn.execute("ALTER TABLE photos ADD COLUMN is_favorite BOOLEAN DEFAULT 0;")
-    except sqlite3.OperationalError:
-        pass
+    # Backward compatibility safeguard: ensure columns exist on legacy schemas
+    for col, col_def in [
+        ("deleted", "BOOLEAN DEFAULT 0"),
+        ("is_favorite", "BOOLEAN DEFAULT 0"),
+        ("city", "TEXT"),
+        ("state", "TEXT"),
+        ("country", "TEXT"),
+        ("country_code", "TEXT"),
+        ("location_label", "TEXT"),
+        ("is_live_photo", "BOOLEAN DEFAULT 0"),
+        ("motion_video_path", "TEXT"),
+        ("file_hash", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE photos ADD COLUMN {col} {col_def};")
+        except sqlite3.OperationalError:
+            pass
 
 
 def init_db() -> None:
@@ -170,6 +202,21 @@ def init_db() -> None:
 
 def upsert_photo(item: Dict[str, Any]) -> int:
     """Inserts or updates photo record in SQLite. Returns photo ID."""
+    item_dict = dict(item)
+    item_dict.setdefault("city", "")
+    item_dict.setdefault("state", "")
+    item_dict.setdefault("country", "")
+    item_dict.setdefault("country_code", "")
+    item_dict.setdefault("location_label", "")
+    item_dict.setdefault("is_live_photo", 0)
+    item_dict.setdefault("motion_video_path", None)
+    item_dict.setdefault("file_hash", None)
+
+    if isinstance(item_dict.get("people"), (list, dict)):
+        item_dict["people"] = json.dumps(item_dict["people"])
+    if isinstance(item_dict.get("ai_tags"), (list, dict)):
+        item_dict["ai_tags"] = json.dumps(item_dict["ai_tags"])
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -177,12 +224,16 @@ def upsert_photo(item: Dict[str, Any]) -> int:
             file_path, filename, folder_year, file_size, media_type, mime_type,
             width, height, taken_at, taken_year, taken_month, taken_day, taken_formatted,
             latitude, longitude, altitude, has_geo, description, people,
-            device_folder, app_source, google_url
+            device_folder, app_source, google_url,
+            city, state, country, country_code, location_label,
+            is_live_photo, motion_video_path, file_hash
         ) VALUES (
             :file_path, :filename, :folder_year, :file_size, :media_type, :mime_type,
             :width, :height, :taken_at, :taken_year, :taken_month, :taken_day, :taken_formatted,
             :latitude, :longitude, :altitude, :has_geo, :description, :people,
-            :device_folder, :app_source, :google_url
+            :device_folder, :app_source, :google_url,
+            :city, :state, :country, :country_code, :location_label,
+            :is_live_photo, :motion_video_path, :file_hash
         )
         ON CONFLICT(file_path) DO UPDATE SET
             filename = excluded.filename,
@@ -201,9 +252,17 @@ def upsert_photo(item: Dict[str, Any]) -> int:
             people = excluded.people,
             device_folder = excluded.device_folder,
             app_source = excluded.app_source,
-            google_url = excluded.google_url
+            google_url = excluded.google_url,
+            city = CASE WHEN excluded.city != '' THEN excluded.city ELSE photos.city END,
+            state = CASE WHEN excluded.state != '' THEN excluded.state ELSE photos.state END,
+            country = CASE WHEN excluded.country != '' THEN excluded.country ELSE photos.country END,
+            country_code = CASE WHEN excluded.country_code != '' THEN excluded.country_code ELSE photos.country_code END,
+            location_label = CASE WHEN excluded.location_label != '' THEN excluded.location_label ELSE photos.location_label END,
+            is_live_photo = CASE WHEN excluded.is_live_photo = 1 THEN 1 ELSE photos.is_live_photo END,
+            motion_video_path = COALESCE(excluded.motion_video_path, photos.motion_video_path),
+            file_hash = COALESCE(excluded.file_hash, photos.file_hash)
         RETURNING id;
-        """, item)
+        """, item_dict)
         row = cursor.fetchone()
         conn.commit()
         return row[0] if row else 0
@@ -269,7 +328,7 @@ def get_timeline_hierarchy() -> List[Dict[str, Any]]:
         rows = conn.execute("""
             SELECT taken_year, taken_month, COUNT(*) as count, MAX(id) as cover_id
             FROM photos
-            WHERE deleted = 0
+            WHERE deleted = 0 AND (is_locked IS NULL OR is_locked = 0)
             GROUP BY taken_year, taken_month
             ORDER BY taken_year DESC, taken_month DESC;
         """).fetchall()
@@ -301,12 +360,19 @@ def get_photos(
     search_text: Optional[str] = None,
     photo_ids: Optional[List[int]] = None,
     album_id: Optional[int] = None,
+    is_locked: Optional[bool] = None,
     limit: int = 80,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
     """Fetches paginated photo records based on filters."""
     conditions = ["deleted = 0"]
     params: List[Any] = []
+
+    if is_locked is not None:
+        conditions.append("is_locked = ?")
+        params.append(1 if is_locked else 0)
+    else:
+        conditions.append("(is_locked IS NULL OR is_locked = 0)")
 
     if album_id is not None:
         conditions.append("id IN (SELECT photo_id FROM album_photos WHERE album_id = ?)")
@@ -345,8 +411,8 @@ def get_photos(
 
     if search_text:
         term = f"%{search_text.strip()}%"
-        conditions.append("(filename LIKE ? OR description LIKE ? OR people LIKE ? OR ai_tags LIKE ? OR ai_category LIKE ?)")
-        params.extend([term, term, term, term, term])
+        conditions.append("(filename LIKE ? OR description LIKE ? OR people LIKE ? OR ai_tags LIKE ? OR ai_category LIKE ? OR city LIKE ? OR state LIKE ? OR country LIKE ? OR location_label LIKE ? OR ocr_text LIKE ?)")
+        params.extend([term, term, term, term, term, term, term, term, term, term])
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     order_clause = "ORDER BY taken_at DESC, id DESC"
@@ -356,7 +422,9 @@ def get_photos(
                width, height, taken_at, taken_year, taken_month, taken_day,
                taken_formatted, latitude, longitude, has_geo, description,
                people, device_folder, app_source, ai_category, ai_confidence,
-               ai_tags, thumbnail_path, is_favorite
+               ai_tags, thumbnail_path, is_favorite,
+               city, state, country, country_code, location_label,
+               is_live_photo, motion_video_path, ocr_text, is_locked
         FROM photos
         {where_clause}
         {order_clause}
@@ -478,12 +546,150 @@ def get_geo_points() -> List[Dict[str, Any]]:
     """Returns essential coordinates and metadata for all active geotagged photos."""
     with get_db_connection() as conn:
         rows = conn.execute("""
-            SELECT id, filename, latitude, longitude, altitude, taken_formatted, taken_at, media_type
+            SELECT id, filename, latitude, longitude, altitude, taken_formatted, taken_at, media_type,
+                   city, state, country, location_label, is_favorite, thumbnail_path
             FROM photos
-            WHERE has_geo = 1 AND deleted = 0 AND latitude IS NOT NULL AND longitude IS NOT NULL
+            WHERE has_geo = 1 AND deleted = 0 AND (is_locked IS NULL OR is_locked = 0) AND latitude IS NOT NULL AND longitude IS NOT NULL
             ORDER BY taken_at DESC;
         """).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_memories_data(
+    month: Optional[int] = None,
+    day: Optional[int] = None,
+    current_year: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Fetches photos taken on the same day in past years ("On This Day" / Flashback).
+    If no photos are found for the exact day, falls back to photos from nearby days (±3 days).
+    Returns grouped memories by year with title ("1 Tahun Lalu", "5 Tahun Lalu", etc.).
+    """
+    from datetime import datetime
+    now = datetime.now()
+    m = month if month is not None else now.month
+    d = day if day is not None else now.day
+    y = current_year if current_year is not None else now.year
+
+    with get_db_connection() as conn:
+        # 1. Exact match on (month, day) for past years
+        query_exact = """
+            SELECT id, file_path, filename, folder_year, file_size, media_type,
+                   width, height, taken_at, taken_year, taken_month, taken_day,
+                   taken_formatted, latitude, longitude, has_geo, description,
+                   people, device_folder, app_source, ai_category, ai_confidence,
+                   ai_tags, thumbnail_path, is_favorite, city, state, country, location_label,
+                   is_live_photo, motion_video_path
+            FROM photos
+            WHERE taken_month = ? AND taken_day = ? AND taken_year < ? AND deleted = 0 AND (is_locked IS NULL OR is_locked = 0)
+            ORDER BY taken_year DESC, taken_at ASC;
+        """
+        rows = conn.execute(query_exact, (m, d, y)).fetchall()
+
+        # If few or no photos on exact day, search nearby days (±3 days) in past years
+        if len(rows) < 2:
+            query_nearby = """
+                SELECT id, file_path, filename, folder_year, file_size, media_type,
+                       width, height, taken_at, taken_year, taken_month, taken_day,
+                       taken_formatted, latitude, longitude, has_geo, description,
+                       people, device_folder, app_source, ai_category, ai_confidence,
+                       ai_tags, thumbnail_path, is_favorite, city, state, country, location_label,
+                       is_live_photo, motion_video_path
+                FROM photos
+                WHERE taken_month = ? 
+                  AND taken_day BETWEEN ? AND ? 
+                  AND taken_year < ? 
+                  AND deleted = 0
+                  AND (is_locked IS NULL OR is_locked = 0)
+                ORDER BY taken_year DESC, taken_at ASC
+                LIMIT 100;
+            """
+            day_min = max(1, d - 3)
+            day_max = min(31, d + 3)
+            rows = conn.execute(query_nearby, (m, day_min, day_max, y)).fetchall()
+
+        # Group by year
+        groups_by_year: Dict[int, List[Dict[str, Any]]] = {}
+        for r in rows:
+            item = dict(r)
+            try:
+                item["people"] = json.loads(item["people"]) if item.get("people") else []
+            except Exception:
+                item["people"] = []
+            try:
+                item["ai_tags"] = json.loads(item["ai_tags"]) if item.get("ai_tags") else []
+            except Exception:
+                item["ai_tags"] = []
+
+            yr = item["taken_year"]
+            if yr not in groups_by_year:
+                groups_by_year[yr] = []
+            groups_by_year[yr].append(item)
+
+        memory_groups = []
+        total_photos = 0
+        for yr in sorted(groups_by_year.keys(), reverse=True):
+            items = groups_by_year[yr]
+            total_photos += len(items)
+            diff = y - yr
+            if diff == 1:
+                title = "1 Tahun Lalu"
+            elif diff > 1:
+                title = f"{diff} Tahun Lalu"
+            else:
+                title = f"Tahun {yr}"
+
+            # Best cover: favorited first, else highest resolution/first
+            cover = next((it for it in items if it.get("is_favorite")), items[0])
+
+            memory_groups.append({
+                "year": yr,
+                "years_ago": diff,
+                "title": title,
+                "count": len(items),
+                "cover": cover,
+                "photos": items,
+            })
+
+        return {
+            "target_date": f"{y:04d}-{m:02d}-{d:02d}",
+            "total_count": total_photos,
+            "group_count": len(memory_groups),
+            "groups": memory_groups
+        }
+
+
+def update_photo_location(
+    photo_id: int,
+    city: str,
+    state: str,
+    country: str,
+    country_code: str,
+    location_label: str
+) -> None:
+    """Updates resolved human-readable location data for a photo."""
+    with get_db_connection() as conn:
+        conn.execute("""
+            UPDATE photos
+            SET city = ?, state = ?, country = ?, country_code = ?, location_label = ?
+            WHERE id = ?;
+        """, (city, state, country, country_code, location_label, photo_id))
+        conn.commit()
+
+
+def update_live_photo_status(
+    photo_id: int,
+    is_live_photo: bool,
+    motion_video_path: Optional[str] = None
+) -> None:
+    """Updates live photo pairing information."""
+    with get_db_connection() as conn:
+        conn.execute("""
+            UPDATE photos
+            SET is_live_photo = ?, motion_video_path = ?
+            WHERE id = ?;
+        """, (1 if is_live_photo else 0, motion_video_path, photo_id))
+        conn.commit()
 
 
 def get_all_embeddings() -> Tuple[List[int], np.ndarray]:
@@ -901,3 +1107,66 @@ def deduplicate_library() -> Dict[str, int]:
         "cleaned_duplicates": cleaned_rows,
         "mapped_albums": mapped_albums
     }
+
+
+# ==============================================================================
+# OCR & Security / Locked Folder Helpers
+# ==============================================================================
+import hashlib
+
+def _hash_pin(pin: str, salt: str = "gp_local_salt_2026") -> str:
+    return hashlib.sha256(f"{salt}:{pin}:{salt}".encode("utf-8")).hexdigest()
+
+def has_pin_configured() -> bool:
+    return get_security_setting("locked_folder_pin") is not None
+
+def set_pin(pin: str) -> None:
+    set_security_setting("locked_folder_pin", _hash_pin(pin))
+
+def verify_pin(pin: str) -> bool:
+    stored = get_security_setting("locked_folder_pin")
+    if not stored:
+        return False
+    return stored == _hash_pin(pin)
+
+def get_security_setting(key: str) -> Optional[str]:
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT val FROM security_settings WHERE key = ?", (key,)).fetchone()
+        return row["val"] if row else None
+
+def set_security_setting(key: str, val: str) -> None:
+    with get_db_connection() as conn:
+        conn.execute("""
+            INSERT INTO security_settings (key, val, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET val = excluded.val, updated_at = CURRENT_TIMESTAMP;
+        """, (key, val))
+        conn.commit()
+
+def lock_photos(photo_ids: List[int]) -> int:
+    if not photo_ids:
+        return 0
+    with get_db_connection() as conn:
+        placeholders = ",".join("?" for _ in photo_ids)
+        cursor = conn.execute(f"UPDATE photos SET is_locked = 1 WHERE id IN ({placeholders})", photo_ids)
+        conn.commit()
+        return cursor.rowcount
+
+def unlock_photos(photo_ids: List[int]) -> int:
+    if not photo_ids:
+        return 0
+    with get_db_connection() as conn:
+        placeholders = ",".join("?" for _ in photo_ids)
+        cursor = conn.execute(f"UPDATE photos SET is_locked = 0 WHERE id IN ({placeholders})", photo_ids)
+        conn.commit()
+        return cursor.rowcount
+
+def get_locked_count() -> int:
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT COUNT(*) as count FROM photos WHERE is_locked = 1 AND deleted = 0").fetchone()
+        return row["count"] if row else 0
+
+def update_photo_ocr(photo_id: int, text: str) -> None:
+    with get_db_connection() as conn:
+        conn.execute("UPDATE photos SET ocr_text = ? WHERE id = ?", (text, photo_id))
+        conn.commit()
