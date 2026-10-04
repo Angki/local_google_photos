@@ -7,8 +7,10 @@
 
 import asyncio
 import json
+import logging
 import mimetypes
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -16,8 +18,11 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
+logger = logging.getLogger("APIRoutes")
+
 from backend.ai_engine import ai_engine
-from backend.config import THUMBNAILS_DIR
+from backend.ai_engine import ai_engine
+from backend.config import PORT, THUMBNAILS_DIR
 from backend.database import (
     get_db_connection,
     get_all_embeddings,
@@ -27,6 +32,9 @@ from backend.database import (
     get_photos,
     get_geo_points,
     get_timeline_hierarchy,
+    get_memories_data,
+    update_live_photo_status,
+    update_photo_location,
     update_thumbnail_path,
     get_albums,
     create_album,
@@ -42,7 +50,19 @@ from backend.database import (
     toggle_photo_favorite,
     set_photos_favorite,
     get_favorites_count,
+    lock_photos,
+    unlock_photos,
+    get_locked_count,
+    update_photo_ocr,
+    has_pin_configured,
+    set_pin,
+    verify_pin,
 )
+from backend.deduplicator import find_duplicates
+from backend.geo_resolver import backfill_missing_locations
+from backend.motion_photo import detect_motion_photo
+from backend.network_helper import get_network_info
+from backend.ocr_engine import extract_ocr_text, is_ocr_available
 from backend.scanner import LibraryScanner
 from backend.thumbnail_manager import generate_thumbnail
 
@@ -267,6 +287,16 @@ def get_ws_status_http() -> Dict[str, Any]:
 def get_timeline():
     """Returns Year -> Month timeline tree with photo counts."""
     return {"timeline": get_timeline_hierarchy()}
+
+
+@api_router.get("/api/memories", tags=["Memories"], summary="Memories On This Day")
+def get_memories(
+    month: Optional[int] = Query(None, ge=1, le=12),
+    day: Optional[int] = Query(None, ge=1, le=31),
+    year: Optional[int] = Query(None),
+):
+    """Returns grouped memories for 'On This Day' in past years."""
+    return get_memories_data(month=month, day=day, current_year=year)
 
 
 @api_router.get("/api/photos", response_model=PhotoListResponse, tags=["Photos"], summary="List Photos")
@@ -575,6 +605,201 @@ def open_media_in_local_app(photo_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to open in desktop player: {str(e)}")
 
 
+@api_router.get("/api/media/{photo_id}/motion", tags=["Media"], summary="Stream Motion Photo Video Clip")
+async def get_motion_video(photo_id: int, request: Request):
+    """
+    Streams the companion short video clip for iPhone Live Photos or Android Motion Photos.
+    Supports HTTP Range requests (206 Partial Content).
+    """
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    file_path = Path(photo["file_path"])
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Original photo not found on disk")
+
+    motion_path = photo.get("motion_video_path")
+    is_live = bool(photo.get("is_live_photo"))
+
+    # Auto-detect if not set yet
+    if not motion_path:
+        is_live, motion_path = detect_motion_photo(file_path)
+        if is_live and motion_path:
+            update_live_photo_status(photo_id, is_live, motion_path)
+
+    if not is_live or not motion_path:
+        raise HTTPException(status_code=404, detail="No motion photo video available for this media")
+
+    # Case 1: Separate companion video file (iPhone Live Photo MOV/MP4)
+    if not motion_path.startswith("embedded:"):
+        vid_p = Path(motion_path)
+        if not vid_p.is_file():
+            raise HTTPException(status_code=404, detail="Companion live video file missing from disk")
+        return FileResponse(vid_p, media_type="video/mp4", headers={"Accept-Ranges": "bytes"})
+
+    # Case 2: Embedded MP4 micro-video inside JPEG/HEIC (Android Motion Photo)
+    try:
+        offset = int(motion_path.split(":", 1)[1])
+        total_file_size = file_path.stat().st_size
+        video_length = total_file_size - offset
+        if video_length <= 0:
+            raise HTTPException(status_code=404, detail="Invalid embedded video offset")
+
+        # Stream embedded bytes
+        def iter_embedded(seek_pos: int, bytes_to_read: int):
+            with open(file_path, "rb") as f:
+                f.seek(seek_pos)
+                chunk_len = 256 * 1024
+                remaining = bytes_to_read
+                while remaining > 0:
+                    read_len = min(remaining, chunk_len)
+                    data = f.read(read_len)
+                    if not data:
+                        break
+                    yield data
+                    remaining -= len(data)
+
+        range_header = request.headers.get("Range")
+        if range_header:
+            try:
+                r_str = range_header.strip()
+                if r_str.startswith("bytes="):
+                    r_str = r_str[6:]
+                parts = r_str.split("-")
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else video_length - 1
+            except Exception:
+                start = 0
+                end = video_length - 1
+
+            start = max(0, min(start, video_length - 1))
+            end = max(start, min(end, video_length - 1))
+            chunk_size = end - start + 1
+
+            headers = {
+                "Content-Range": f"bytes {start}-{end}/{video_length}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(chunk_size),
+                "Content-Type": "video/mp4",
+            }
+            return StreamingResponse(iter_embedded(offset + start, chunk_size), status_code=206, headers=headers)
+
+        headers = {
+            "Content-Length": str(video_length),
+            "Content-Type": "video/mp4",
+            "Accept-Ranges": "bytes",
+        }
+        return StreamingResponse(iter_embedded(offset, video_length), headers=headers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract motion video: {str(e)}")
+
+
+class EditPhotoRequest(BaseModel):
+    rotate: int = Field(0, description="Clockwise rotation degrees (90, 180, 270)")
+    flip_h: bool = Field(False, description="Flip horizontally")
+    crop: Optional[Dict[str, Any]] = Field(None, description="Crop rectangle: {x, y, w, h, normalized}")
+    auto_enhance: bool = Field(False, description="Apply auto-contrast and color boost")
+    brightness: float = Field(0.0, description="Brightness adjustment -100 to +100")
+    contrast: float = Field(0.0, description="Contrast adjustment -100 to +100")
+    saturation: float = Field(0.0, description="Saturation adjustment -100 to +100")
+    warmth: float = Field(0.0, description="Warmth adjustment -100 to +100")
+    save_as_copy: bool = Field(True, description="Save as new copy or overwrite original")
+
+
+@api_router.post("/api/photos/{photo_id}/edit", tags=["Media"], summary="Apply Photo Edits")
+def api_edit_photo(photo_id: int, req: EditPhotoRequest):
+    """
+    Applies image edits (crop, rotate, adjustments, auto-enhance) to a photo.
+    Supports non-destructive 'save_as_copy' or atomic overwrite.
+    """
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo.get("media_type") != "image":
+        raise HTTPException(status_code=400, detail="Only image files can be edited")
+
+    source_path = Path(photo["file_path"])
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="Original photo file not found on disk")
+
+    from backend.photo_editor import process_image_edits
+    from backend.thumbnail_manager import generate_thumbnail
+    from backend.database import update_thumbnail_path, upsert_photo
+
+    edits_dict = req.model_dump()
+
+    try:
+        if req.save_as_copy:
+            timestamp_suffix = int(time.time())
+            new_filename = f"{source_path.stem}_edited_{timestamp_suffix}{source_path.suffix}"
+            target_path = source_path.parent / new_filename
+
+            new_w, new_h, new_size = process_image_edits(source_path, target_path, edits_dict)
+
+            # Create copy record in DB
+            new_record = dict(photo)
+            new_record.pop("id", None)
+            new_record["file_path"] = str(target_path.resolve())
+            new_record["filename"] = new_filename
+            new_record["file_size"] = new_size
+            new_record["width"] = new_w
+            new_record["height"] = new_h
+            new_record["is_live_photo"] = 0
+            new_record["motion_video_path"] = None
+
+            new_id = upsert_photo(new_record)
+            if new_id:
+                thumb_res = generate_thumbnail(new_id, str(target_path), "image")
+                if thumb_res:
+                    t_path, tw, th = thumb_res
+                    update_thumbnail_path(new_id, t_path, tw, th)
+                edited_photo = get_photo_by_id(new_id)
+                return {
+                    "status": "success",
+                    "success": True,
+                    "action": "created_copy",
+                    "is_copy": True,
+                    "photo_id": new_id,
+                    "filename": new_filename,
+                    "photo": edited_photo,
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to save edited photo to database")
+        else:
+            # Overwrite original with safe atomic write
+            temp_target = source_path.parent / f".tmp_{source_path.name}"
+            new_w, new_h, new_size = process_image_edits(source_path, temp_target, edits_dict)
+            temp_target.replace(source_path)
+
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE photos SET width = ?, height = ?, file_size = ? WHERE id = ?;",
+                    (new_w, new_h, new_size, photo_id)
+                )
+
+            # Regenerate thumbnail
+            thumb_res = generate_thumbnail(photo_id, str(source_path), "image")
+            if thumb_res:
+                t_path, tw, th = thumb_res
+                update_thumbnail_path(photo_id, t_path, tw, th)
+
+            edited_photo = get_photo_by_id(photo_id)
+            return {
+                "status": "success",
+                "success": True,
+                "action": "overwritten",
+                "is_copy": False,
+                "photo_id": photo_id,
+                "filename": source_path.name,
+                "photo": edited_photo,
+            }
+
+    except Exception as e:
+        logger.exception(f"Failed to edit photo {photo_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Editing failed: {str(e)}")
+
+
 # ==============================================================================
 # AI Semantic Search & Categories
 # ==============================================================================
@@ -667,7 +892,7 @@ def scan_status() -> Dict[str, Any]:
 
 
 # ==============================================================================
-# Geolocation Points Route
+# Geolocation Points & Backfill Route
 # ==============================================================================
 
 @api_router.get("/api/geo/points", response_model=GeoPointsResponse, tags=["Geolocation"], summary="Photo Map Points")
@@ -675,6 +900,43 @@ def api_get_geo_points():
     """Returns list of lightweight coordinates and metadata for all active geotagged photos."""
     points = get_geo_points()
     return {"count": len(points), "points": points}
+
+
+@api_router.post("/api/geo/backfill", tags=["Geolocation"], summary="Backfill Location Names")
+def api_backfill_geo(batch_size: int = Query(500, ge=1, le=2000)):
+    """
+    Triggers offline reverse geocoding to resolve city, state, and country for geotagged photos.
+    """
+    count = backfill_missing_locations(batch_size=batch_size)
+    return {"success": True, "updated_count": count}
+
+
+# ==============================================================================
+# Deduplication & Cleaner Assistant Routes
+# ==============================================================================
+
+class DuplicateCleanupRequest(BaseModel):
+    photo_ids: List[int] = Field(..., description="List of duplicate photo IDs to trash")
+    hard_delete: bool = Field(False, description="If true, permanently delete files from disk")
+
+
+@api_router.get("/api/duplicates", tags=["Deduplication"], summary="Get Duplicate Photo Groups")
+def api_get_duplicates(limit_groups: int = Query(50, ge=1, le=200)):
+    """
+    Detects exact duplicates and burst near-duplicate photo groups for storage cleanup.
+    """
+    return find_duplicates(limit_groups=limit_groups)
+
+
+@api_router.post("/api/duplicates/cleanup", tags=["Deduplication"], summary="Clean Up Duplicates")
+def api_cleanup_duplicates(req: DuplicateCleanupRequest):
+    """
+    Trashes or permanently purges chosen duplicate photos.
+    """
+    if req.hard_delete:
+        return delete_photos_from_disk_and_db(req.photo_ids)
+    count = delete_photos(req.photo_ids)
+    return {"success": True, "deleted_count": count, "photo_ids": req.photo_ids}
 
 
 # ==============================================================================
@@ -730,3 +992,158 @@ def api_delete_album(album_id: int):
     if not success:
         raise HTTPException(status_code=404, detail="Album not found")
     return {"success": True}
+
+
+# ==============================================================================
+# Optical Character Recognition (OCR / Live Text)
+# ==============================================================================
+@api_router.get("/api/photos/{photo_id}/ocr", tags=["OCR"], summary="Get Photo OCR Text")
+def api_get_photo_ocr(photo_id: int):
+    """Retrieves cached OCR text or extracts it on-the-fly using Tesseract."""
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    cached_text = photo.get("ocr_text")
+    if cached_text and cached_text.strip():
+        return {
+            "photo_id": photo_id,
+            "text": cached_text,
+            "ocr_text": cached_text,
+            "has_text": True,
+            "cached": True,
+        }
+
+    file_path = Path(photo["file_path"])
+    text = extract_ocr_text(file_path)
+    if text:
+        update_photo_ocr(photo_id, text)
+
+    return {
+        "photo_id": photo_id,
+        "text": text,
+        "ocr_text": text,
+        "has_text": bool(text.strip()),
+        "cached": False,
+    }
+
+
+@api_router.post("/api/photos/{photo_id}/ocr", tags=["OCR"], summary="Extract Photo OCR Text")
+def api_extract_photo_ocr(photo_id: int):
+    """Force re-extracts OCR text from the photo and updates cache."""
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    file_path = Path(photo["file_path"])
+    text = extract_ocr_text(file_path)
+    update_photo_ocr(photo_id, text)
+
+    return {
+        "photo_id": photo_id,
+        "text": text,
+        "ocr_text": text,
+        "has_text": bool(text.strip()),
+        "reindexed": True,
+    }
+
+
+# ==============================================================================
+# Local Wi-Fi LAN Mode & QR Code Mobile Access
+# ==============================================================================
+@api_router.get("/api/system/network", tags=["System"], summary="Get LAN Network Info & QR Code")
+def api_get_network_info():
+    """Returns local LAN IP, network URL, and standalone SVG QR code."""
+    return get_network_info(port=PORT)
+
+
+# ==============================================================================
+# Locked Folder (PIN-Protected Private Photos)
+# ==============================================================================
+_active_unlocked_tokens: Dict[str, float] = {}
+
+
+def is_valid_unlocked_token(token: Optional[str]) -> bool:
+    if not token or token not in _active_unlocked_tokens:
+        return False
+    if time.time() > _active_unlocked_tokens[token]:
+        _active_unlocked_tokens.pop(token, None)
+        return False
+    return True
+
+
+class PinSetupRequest(BaseModel):
+    pin: str = Field(..., min_length=4, max_length=4, pattern=r"^\d{4}$", description="4-digit numeric security PIN")
+
+
+class PinVerifyRequest(BaseModel):
+    pin: str = Field(..., min_length=4, max_length=4, pattern=r"^\d{4}$", description="4-digit numeric security PIN")
+
+
+class LockPhotosRequest(BaseModel):
+    photo_ids: List[int] = Field(..., min_length=1)
+
+
+class UnlockPhotosRequest(BaseModel):
+    photo_ids: List[int] = Field(..., min_length=1)
+    token: str = Field(...)
+
+
+@api_router.get("/api/locked/status", tags=["Locked Folder"], summary="Get Locked Folder Status")
+def api_get_locked_status():
+    """Checks whether PIN is set and returns count of currently locked items."""
+    return {
+        "has_pin": has_pin_configured(),
+        "locked_count": get_locked_count(),
+    }
+
+
+@api_router.post("/api/locked/setup-pin", tags=["Locked Folder"], summary="Setup Security PIN")
+def api_setup_pin(req: PinSetupRequest):
+    """Sets initial 4-digit PIN for the locked folder."""
+    if has_pin_configured():
+        raise HTTPException(status_code=400, detail="PIN sudah pernah dibuat.")
+    set_pin(req.pin)
+    return {"success": True, "message": "PIN keamanan berhasil dibuat."}
+
+
+@api_router.post("/api/locked/verify-pin", tags=["Locked Folder"], summary="Verify PIN and Unlock")
+def api_verify_pin(req: PinVerifyRequest):
+    """Verifies security PIN and returns a temporary 15-minute access token."""
+    if not verify_pin(req.pin):
+        raise HTTPException(status_code=401, detail="PIN yang Anda masukkan salah.")
+
+    import hashlib
+    token = hashlib.sha256(f"{req.pin}:{time.time()}:{os.urandom(16)}".encode("utf-8")).hexdigest()[:32]
+    _active_unlocked_tokens[token] = time.time() + (15 * 60)
+    return {"success": True, "token": token, "expires_in": 900}
+
+
+@api_router.post("/api/photos/lock", tags=["Locked Folder"], summary="Lock Photos")
+def api_lock_photos(req: LockPhotosRequest):
+    """Moves photos to the Locked Folder (hidden from main timeline, map, and memories)."""
+    count = lock_photos(req.photo_ids)
+    return {"success": True, "locked_count": count}
+
+
+@api_router.post("/api/photos/unlock", tags=["Locked Folder"], summary="Unlock Photos")
+def api_unlock_photos(req: UnlockPhotosRequest):
+    """Restores locked photos back to the public timeline."""
+    if not is_valid_unlocked_token(req.token):
+        raise HTTPException(status_code=401, detail="Sesi akses terkunci kedaluwarsa. Silakan masukkan PIN ulang.")
+    count = unlock_photos(req.photo_ids)
+    return {"success": True, "unlocked_count": count}
+
+
+@api_router.get("/api/locked/photos", tags=["Locked Folder"], summary="Get Locked Photos")
+def api_get_locked_photos(
+    token: Optional[str] = Query(None, description="Active unlocked session token"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """Fetches photos in the Locked Folder (requires active unlocked session token)."""
+    if not is_valid_unlocked_token(token):
+        raise HTTPException(status_code=401, detail="Sesi akses terkunci kedaluwarsa. Silakan masukkan PIN ulang.")
+    photos = get_photos(is_locked=True, limit=limit, offset=offset)
+    return {"photos": photos, "count": len(photos)}
+
