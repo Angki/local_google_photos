@@ -319,6 +319,28 @@
     storageLargeCountBadge: document.getElementById("storageLargeCountBadge"),
     storageYearlyList: document.getElementById("storageYearlyList"),
 
+    // Mobile Bottom Navigation & Scroll-To-Top
+    scrollToTopBtn: document.getElementById("scrollToTopBtn"),
+    mobileBottomNav: document.getElementById("mobileBottomNav"),
+    mobileNavPhotos: document.getElementById("mobileNavPhotos"),
+    mobileNavSearch: document.getElementById("mobileNavSearch"),
+    mobileNavAlbums: document.getElementById("mobileNavAlbums"),
+    mobileNavFavorites: document.getElementById("mobileNavFavorites"),
+    mobileNavStorage: document.getElementById("mobileNavStorage"),
+
+    // Full-Screen Stories & Memories Player
+    storiesModalWrapper: document.getElementById("storiesModalWrapper"),
+    storiesModalBackdrop: document.getElementById("storiesModalBackdrop"),
+    storiesProgressBars: document.getElementById("storiesProgressBars"),
+    storiesHeader: document.getElementById("storiesHeader"),
+    storiesYearBadge: document.getElementById("storiesYearBadge"),
+    storiesTitle: document.getElementById("storiesTitle"),
+    storiesDate: document.getElementById("storiesDate"),
+    storiesCloseBtn: document.getElementById("storiesCloseBtn"),
+    storiesMediaContainer: document.getElementById("storiesMediaContainer"),
+    storiesPrevTouchArea: document.getElementById("storiesPrevTouchArea"),
+    storiesNextTouchArea: document.getElementById("storiesNextTouchArea"),
+
     // Locked Folder (Phase 9)
     lockedChip: document.getElementById("lockedChip"),
     lockedBadgeCount: document.getElementById("lockedBadgeCount"),
@@ -410,6 +432,9 @@
     updateDuplicatesBadge();
     updateLockedBadge();
     loadMemories();
+    initMobileBottomNav();
+    initScrollToTop();
+    initStoriesPlayer();
     fetchPhotos(true);
   }
 
@@ -1281,9 +1306,20 @@
 
   window.__openPhotoById = openLightbox;
 
+  let isLightboxImmersion = false;
+
+  function toggleLightboxImmersion() {
+    isLightboxImmersion = !isLightboxImmersion;
+    if (elements.lightboxHeader) elements.lightboxHeader.classList.toggle("ui-hidden", isLightboxImmersion);
+    if (elements.lightboxActions) elements.lightboxActions.classList.toggle("ui-hidden", isLightboxImmersion);
+  }
+
   function closeLightbox() {
     stopSlideshow();
     stopLivePhotoPlayback();
+    isLightboxImmersion = false;
+    if (elements.lightboxHeader) elements.lightboxHeader.classList.remove("ui-hidden");
+    if (elements.lightboxActions) elements.lightboxActions.classList.remove("ui-hidden");
     elements.lightboxModal.classList.add("hidden");
     elements.lightboxVideo.pause();
     elements.lightboxVideo.src = "";
@@ -2142,6 +2178,18 @@
           else if (deltaY > 80 && deltaY > absX * 1.4) {
             closeLightbox();
           }
+          // Single tap on media (not on buttons or sidebar): toggle immersion mode!
+          else if (absX < 12 && absY < 12) {
+            const target = e.target;
+            if (
+              !target.closest("button") &&
+              !target.closest(".lightbox-sidebar") &&
+              !target.closest(".lightbox-actions") &&
+              !target.closest(".lightbox-header")
+            ) {
+              toggleLightboxImmersion();
+            }
+          }
         }
       },
       { passive: true }
@@ -2794,12 +2842,7 @@
 
         card.addEventListener("click", () => {
           if (mem.photos && mem.photos.length > 0) {
-            state.photos = [...mem.photos];
-            state.lightboxIndex = 0;
-            renderLightboxPhoto();
-            elements.lightboxModal.classList.remove("hidden");
-            document.body.style.overflow = "hidden";
-            startSlideshow();
+            openStoriesModal(mem);
           }
         });
 
@@ -5275,6 +5318,400 @@
       console.error("Save metadata error", e);
       showToast(`Gagal menyimpan perubahan: ${e.message}`);
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // Mobile Bottom Navigation Controller
+  // --------------------------------------------------------------------------
+  function setMobileNavActive(activeId) {
+    const navItems = [
+      elements.mobileNavPhotos,
+      elements.mobileNavSearch,
+      elements.mobileNavAlbums,
+      elements.mobileNavFavorites,
+      elements.mobileNavStorage,
+    ];
+    navItems.forEach((btn) => {
+      if (!btn) return;
+      if (btn.id === activeId) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  }
+
+  function exitSecondaryViews() {
+    if (elements.mapContainer && !elements.mapContainer.classList.contains("hidden")) {
+      if (elements.mapBackBtn) elements.mapBackBtn.click();
+    }
+    if (elements.duplicatesContainer && !elements.duplicatesContainer.classList.contains("hidden")) {
+      if (elements.duplicatesBackBtn) elements.duplicatesBackBtn.click();
+    }
+    if (elements.lockedContainer && !elements.lockedContainer.classList.contains("hidden")) {
+      if (elements.lockedBackBtn) elements.lockedBackBtn.click();
+    }
+    if (state.activeView === "trash") {
+      state.activeView = "timeline";
+      if (elements.trashBanner) elements.trashBanner.classList.add("hidden");
+    }
+    state.activeView = "timeline";
+  }
+
+  function initMobileBottomNav() {
+    if (!elements.mobileBottomNav) return;
+
+    if (elements.mobileNavPhotos) {
+      elements.mobileNavPhotos.addEventListener("click", () => {
+        setMobileNavActive("mobileNavPhotos");
+        exitSecondaryViews();
+        state.currentCategory = "all";
+        state.searchQuery = "";
+        state.currentYear = null;
+        state.currentMonth = null;
+        if (elements.searchInput) elements.searchInput.value = "";
+        document.querySelectorAll(".category-chip").forEach((c) => {
+          c.classList.toggle("active", c.dataset.category === "all");
+        });
+        fetchPhotos(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+
+    if (elements.mobileNavSearch) {
+      elements.mobileNavSearch.addEventListener("click", () => {
+        setMobileNavActive("mobileNavSearch");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        if (elements.searchInput) {
+          elements.searchInput.focus();
+        }
+      });
+    }
+
+    if (elements.mobileNavAlbums) {
+      elements.mobileNavAlbums.addEventListener("click", () => {
+        setMobileNavActive("mobileNavAlbums");
+        if (elements.albumSelect) {
+          elements.albumSelect.focus();
+          elements.albumSelect.click();
+        } else {
+          showToast("Koleksi Album: Pilih album pada filter di atas.");
+        }
+      });
+    }
+
+    if (elements.mobileNavFavorites) {
+      elements.mobileNavFavorites.addEventListener("click", () => {
+        setMobileNavActive("mobileNavFavorites");
+        exitSecondaryViews();
+        state.currentCategory = "favorites";
+        state.searchQuery = "";
+        if (elements.searchInput) elements.searchInput.value = "";
+        document.querySelectorAll(".category-chip").forEach((c) => {
+          c.classList.toggle("active", c.dataset.category === "favorites");
+        });
+        fetchPhotos(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+
+    if (elements.mobileNavStorage) {
+      elements.mobileNavStorage.addEventListener("click", () => {
+        setMobileNavActive("mobileNavStorage");
+        openStorageModal();
+      });
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Floating Scroll-To-Top Pill
+  // --------------------------------------------------------------------------
+  function initScrollToTop() {
+    if (!elements.scrollToTopBtn) return;
+
+    window.addEventListener("scroll", () => {
+      if (window.scrollY > 450) {
+        elements.scrollToTopBtn.classList.remove("hidden");
+      } else {
+        elements.scrollToTopBtn.classList.add("hidden");
+      }
+    }, { passive: true });
+
+    elements.scrollToTopBtn.addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Full-Screen Stories & Memories Player (Phase 10)
+  // --------------------------------------------------------------------------
+  let activeStoryMemory = null;
+  let activeStoryIndex = 0;
+  let storyTimer = null;
+  let storyStartTime = 0;
+  let storyRemaining = 4500;
+  const STORY_DURATION = 4500;
+  let isStoryPaused = false;
+  let storiesHoldTimeout = null;
+
+  function openStoriesModal(mem) {
+    if (!mem || !mem.photos || mem.photos.length === 0) return;
+    if (!elements.storiesModalWrapper) return;
+
+    activeStoryMemory = mem;
+    activeStoryIndex = 0;
+    isStoryPaused = false;
+
+    // Set badge & title
+    if (elements.storiesYearBadge) {
+      elements.storiesYearBadge.textContent = mem.years_ago > 0 ? `✨ ${mem.years_ago} TAHUN LALU` : "✨ KENANGAN HARI INI";
+    }
+    if (elements.storiesTitle) {
+      elements.storiesTitle.textContent = mem.title || "Kenangan";
+    }
+
+    // Render Progress Bars
+    if (elements.storiesProgressBars) {
+      elements.storiesProgressBars.innerHTML = "";
+      mem.photos.forEach((_, idx) => {
+        const bar = document.createElement("div");
+        bar.className = "story-progress-bar";
+        const fill = document.createElement("div");
+        fill.className = "story-progress-fill";
+        fill.id = `storyProgressFill_${idx}`;
+        bar.appendChild(fill);
+        elements.storiesProgressBars.appendChild(bar);
+      });
+    }
+
+    // Show wrapper
+    elements.storiesModalWrapper.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+
+    // Load first photo
+    loadStoryPhoto(0);
+  }
+
+  function closeStoriesModal() {
+    if (storyTimer) {
+      clearTimeout(storyTimer);
+      storyTimer = null;
+    }
+    isStoryPaused = false;
+    activeStoryMemory = null;
+    activeStoryIndex = 0;
+
+    if (elements.storiesMediaContainer) {
+      const vid = elements.storiesMediaContainer.querySelector("video");
+      if (vid) vid.pause();
+      elements.storiesMediaContainer.innerHTML = "";
+    }
+
+    if (elements.storiesModalWrapper) {
+      elements.storiesModalWrapper.classList.add("hidden");
+    }
+    document.body.style.overflow = "";
+  }
+
+  function loadStoryPhoto(index) {
+    if (!activeStoryMemory || !activeStoryMemory.photos) return;
+    if (index >= activeStoryMemory.photos.length) {
+      closeStoriesModal();
+      return;
+    }
+    if (index < 0) index = 0;
+
+    activeStoryIndex = index;
+    const photo = activeStoryMemory.photos[index];
+
+    // Update Date
+    if (elements.storiesDate && photo.taken_at) {
+      try {
+        const d = new Date(photo.taken_at);
+        elements.storiesDate.textContent = d.toLocaleDateString("id-ID", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+      } catch {
+        elements.storiesDate.textContent = photo.taken_at;
+      }
+    }
+
+    // Update progress fills
+    if (elements.storiesProgressBars) {
+      for (let i = 0; i < activeStoryMemory.photos.length; i++) {
+        const fill = document.getElementById(`storyProgressFill_${i}`);
+        if (!fill) continue;
+        fill.style.transition = "none";
+        if (i < index) {
+          fill.style.width = "100%";
+          fill.classList.add("completed");
+        } else {
+          fill.style.width = "0%";
+          fill.classList.remove("completed");
+        }
+      }
+    }
+
+    // Render Media
+    if (elements.storiesMediaContainer) {
+      const isVideo = photo.media_type === "video" || /\.(mp4|mov|webm|m4v)$/i.test(photo.filename || "");
+      if (isVideo) {
+        elements.storiesMediaContainer.innerHTML = `
+          <video class="story-media-item" src="/api/media/${photo.id}" autoplay playsinline muted></video>
+        `;
+      } else {
+        elements.storiesMediaContainer.innerHTML = `
+          <img class="story-media-item" src="/api/media/${photo.id}" alt="${escapeHtml(photo.filename || 'Story')}" />
+        `;
+      }
+    }
+
+    // Preload next image if available
+    if (index + 1 < activeStoryMemory.photos.length) {
+      const nextPhoto = activeStoryMemory.photos[index + 1];
+      const isNextVideo = nextPhoto.media_type === "video" || /\.(mp4|mov|webm|m4v)$/i.test(nextPhoto.filename || "");
+      if (!isNextVideo) {
+        const preload = new Image();
+        preload.src = `/api/media/${nextPhoto.id}`;
+      }
+    }
+
+    // Start timer for current slide
+    startStoryTimer(STORY_DURATION);
+  }
+
+  function startStoryTimer(duration) {
+    if (storyTimer) {
+      clearTimeout(storyTimer);
+      storyTimer = null;
+    }
+    storyRemaining = duration;
+    storyStartTime = performance.now();
+
+    const fill = document.getElementById(`storyProgressFill_${activeStoryIndex}`);
+    if (fill) {
+      // Force layout reflow before transition
+      void fill.offsetWidth;
+      fill.style.transition = `width ${duration}ms linear`;
+      fill.style.width = "100%";
+    }
+
+    storyTimer = setTimeout(() => {
+      nextStoryPhoto();
+    }, duration);
+  }
+
+  function pauseStory() {
+    if (isStoryPaused || !activeStoryMemory) return;
+    isStoryPaused = true;
+
+    if (storyTimer) {
+      clearTimeout(storyTimer);
+      storyTimer = null;
+    }
+
+    const elapsed = performance.now() - storyStartTime;
+    storyRemaining = Math.max(0, storyRemaining - elapsed);
+
+    const fill = document.getElementById(`storyProgressFill_${activeStoryIndex}`);
+    if (fill) {
+      const computedWidth = window.getComputedStyle(fill).width;
+      fill.style.transition = "none";
+      fill.style.width = computedWidth;
+    }
+
+    if (elements.storiesMediaContainer) {
+      const vid = elements.storiesMediaContainer.querySelector("video");
+      if (vid && !vid.paused) vid.pause();
+    }
+  }
+
+  function resumeStory() {
+    if (!isStoryPaused || !activeStoryMemory) return;
+    isStoryPaused = false;
+
+    if (elements.storiesMediaContainer) {
+      const vid = elements.storiesMediaContainer.querySelector("video");
+      if (vid && vid.paused) vid.play().catch(() => {});
+    }
+
+    startStoryTimer(storyRemaining);
+  }
+
+  function nextStoryPhoto() {
+    if (!activeStoryMemory) return;
+    loadStoryPhoto(activeStoryIndex + 1);
+  }
+
+  function prevStoryPhoto() {
+    if (!activeStoryMemory) return;
+    loadStoryPhoto(Math.max(0, activeStoryIndex - 1));
+  }
+
+  function initStoriesPlayer() {
+    if (!elements.storiesModalWrapper) return;
+
+    if (elements.storiesCloseBtn) {
+      elements.storiesCloseBtn.addEventListener("click", closeStoriesModal);
+    }
+
+    if (elements.storiesModalBackdrop) {
+      elements.storiesModalBackdrop.addEventListener("click", closeStoriesModal);
+    }
+
+    if (elements.storiesPrevTouchArea) {
+      elements.storiesPrevTouchArea.addEventListener("click", (e) => {
+        e.stopPropagation();
+        prevStoryPhoto();
+      });
+    }
+
+    if (elements.storiesNextTouchArea) {
+      elements.storiesNextTouchArea.addEventListener("click", (e) => {
+        e.stopPropagation();
+        nextStoryPhoto();
+      });
+    }
+
+    // Long press / hold to pause story
+    const startHold = () => {
+      storiesHoldTimeout = setTimeout(() => {
+        pauseStory();
+      }, 180);
+    };
+
+    const endHold = () => {
+      if (storiesHoldTimeout) {
+        clearTimeout(storiesHoldTimeout);
+        storiesHoldTimeout = null;
+      }
+      if (isStoryPaused) {
+        resumeStory();
+      }
+    };
+
+    elements.storiesModalWrapper.addEventListener("mousedown", startHold);
+    elements.storiesModalWrapper.addEventListener("mouseup", endHold);
+    elements.storiesModalWrapper.addEventListener("touchstart", startHold, { passive: true });
+    elements.storiesModalWrapper.addEventListener("touchend", endHold, { passive: true });
+
+    // Keyboard support for stories
+    window.addEventListener("keydown", (e) => {
+      if (!elements.storiesModalWrapper || elements.storiesModalWrapper.classList.contains("hidden")) return;
+      if (e.key === "Escape") {
+        closeStoriesModal();
+      } else if (e.key === "ArrowRight") {
+        nextStoryPhoto();
+      } else if (e.key === "ArrowLeft") {
+        prevStoryPhoto();
+      } else if (e.key === " ") {
+        e.preventDefault();
+        if (isStoryPaused) resumeStory();
+        else pauseStory();
+      }
+    });
   }
 
   // --- Bootstrap ---
