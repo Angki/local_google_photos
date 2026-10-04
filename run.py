@@ -100,7 +100,29 @@ def main():
     from backend.config import HOST, PORT, SOURCE_DATA_DIR
 
     active_host = args.host if args.host else HOST
-    active_port = args.port if args.port else PORT
+    requested_port = args.port if args.port else PORT
+
+    # Check port availability to avoid [WinError 10048]
+    import socket
+    active_port = requested_port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((active_host, requested_port))
+        except OSError:
+            if args.port:
+                print(f"  [!] ERROR: Port {requested_port} is already in use by another process.")
+                sys.exit(1)
+            # Find next free port
+            test_port = requested_port + 1
+            while test_port < requested_port + 50:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
+                    try:
+                        s2.bind((active_host, test_port))
+                        active_port = test_port
+                        print(f"  [!] NOTICE: Port {requested_port} is busy. Automatically switching to http://{active_host}:{active_port}")
+                        break
+                    except OSError:
+                        test_port += 1
 
     check_environment(SOURCE_DATA_DIR, active_host, active_port)
 

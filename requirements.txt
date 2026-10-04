@@ -26,7 +26,13 @@ huggingface-hub>=0.20.0
 # Utilities
 tqdm>=4.66.0
 rich>=13.0.0
+reverse-geocoder>=1.5.1
+imagehash>=4.3.0
+watchdog>=6.0.0
+qrcode>=8.0.0
+pytesseract>=0.3.10
 
 # Optional Dependencies:
 # For Apple HEIC / HEIF image support:
 # pillow-heif>=0.16.0
+
