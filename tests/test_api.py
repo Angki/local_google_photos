@@ -6,6 +6,7 @@
 # ==============================================================================
 
 import asyncio
+from pathlib import Path
 import unittest
 from unittest.mock import MagicMock, patch
 import httpx
@@ -43,6 +44,8 @@ class TestGooglePhotosTakeout(unittest.TestCase):
             self.assertIn(1, versions)
             self.assertIn(2, versions)
             self.assertIn(3, versions)
+            self.assertIn(4, versions)
+            self.assertIn(5, versions)
 
     def test_target_folder_filtering(self):
         """Tests that years 2013-2026 and Takeout albums are accepted, and system folders are rejected."""
@@ -369,7 +372,7 @@ class TestGooglePhotosTakeout(unittest.TestCase):
             self.skipTest("No photo found.")
         pid = photos[0]["id"]
 
-        with patch("os.startfile", return_value=None) as mock_start:
+        with patch.object(Path, "is_file", return_value=True), patch("os.startfile", return_value=None) as mock_start:
             async def _run():
                 async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
                     resp = await client.post(f"/api/media/{pid}/open-local")
@@ -378,6 +381,263 @@ class TestGooglePhotosTakeout(unittest.TestCase):
                     mock_start.assert_called_once()
             asyncio.run(_run())
 
+    def test_memories_endpoint(self):
+        """Verifies the /api/memories endpoint returns structured On This Day groups."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/memories?month=1&day=1&year=2026")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("target_date", data)
+                self.assertIn("groups", data)
+                self.assertIsInstance(data["groups"], list)
+        asyncio.run(_run())
+
+    def test_geo_backfill_endpoint(self):
+        """Verifies the /api/geo/backfill endpoint responds cleanly."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post("/api/geo/backfill?batch_size=10")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertTrue(data.get("success"))
+                self.assertIn("updated_count", data)
+        asyncio.run(_run())
+
+    def test_duplicates_endpoint(self):
+        """Verifies the /api/duplicates endpoint returns duplicate groups and savable metrics."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/duplicates?limit_groups=10")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("total_groups", data)
+                self.assertIn("potential_savings_bytes", data)
+                self.assertIn("groups", data)
+        asyncio.run(_run())
+
+    def test_motion_photo_endpoint_not_found(self):
+        """Verifies that non-motion photos return 404 on /api/media/{id}/motion."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/media/99999999/motion")
+                self.assertEqual(resp.status_code, 404)
+        asyncio.run(_run())
+
+    def test_pwa_static_assets(self):
+        """Verifies that manifest.webmanifest and sw.js are served correctly."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                manifest_resp = await client.get("/manifest.webmanifest")
+                self.assertEqual(manifest_resp.status_code, 200)
+                self.assertIn("Google Photos", manifest_resp.text)
+
+                sw_resp = await client.get("/sw.js")
+                self.assertEqual(sw_resp.status_code, 200)
+                self.assertIn("self.addEventListener", sw_resp.text)
+        asyncio.run(_run())
+
+    def test_duplicates_cleanup_endpoint(self):
+        """Verifies duplicate cleanup endpoint rejects empty or processes soft-deletes."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post("/api/duplicates/cleanup", json={"photo_ids": []})
+                self.assertEqual(resp.status_code, 200)
+                self.assertTrue(resp.json().get("success"))
+        asyncio.run(_run())
+
+    def test_photo_editor_api(self):
+        """Verifies photo editing pipeline: adjustments, rotation, flip, and non-destructive saving."""
+        import tempfile
+        from pathlib import Path
+        from PIL import Image
+        from backend.scanner import index_single_media_file
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir) / "test_photo_edit.jpg"
+            img = Image.new("RGB", (200, 200), color=(100, 150, 200))
+            img.save(tmp_path, "JPEG")
+
+            photo_id = index_single_media_file(tmp_path)
+            self.assertIsNotNone(photo_id)
+
+            async def _run():
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                    # Test save as copy
+                    payload = {
+                        "rotate": 90,
+                        "flip_h": True,
+                        "brightness": 20,
+                        "contrast": 10,
+                        "saturation": 15,
+                        "warmth": 25,
+                        "auto_enhance": True,
+                        "save_as_copy": True,
+                    }
+                    resp = await client.post(f"/api/photos/{photo_id}/edit", json=payload)
+                    self.assertEqual(resp.status_code, 200)
+                    data = resp.json()
+                    self.assertEqual(data.get("status"), "success")
+                    self.assertTrue(data.get("is_copy"))
+                    new_id = data.get("photo_id")
+                    self.assertNotEqual(new_id, photo_id)
+
+                    # Test overwrite edit
+                    overwrite_payload = {
+                        "rotate": 0,
+                        "flip_h": False,
+                        "brightness": -10,
+                        "contrast": 5,
+                        "save_as_copy": False,
+                    }
+                    resp_ow = await client.post(f"/api/photos/{photo_id}/edit", json=overwrite_payload)
+                    self.assertEqual(resp_ow.status_code, 200)
+                    self.assertEqual(resp_ow.json().get("photo_id"), photo_id)
+
+            asyncio.run(_run())
+
+    def test_hot_folder_watcher(self):
+        """Verifies HotFolderWatcher startup, filtering logic, and clean shutdown."""
+        import tempfile
+        from pathlib import Path
+        from backend.watcher import HotFolderWatcher, MediaWatcherHandler
+
+        handler = MediaWatcherHandler()
+        # Test hidden file rejection
+        self.assertFalse(handler._should_process(".hidden_photo.jpg"))
+        # Test non-media extension rejection
+        self.assertFalse(handler._should_process("document.pdf"))
+        # Test valid media extension acceptance
+        self.assertTrue(handler._should_process("holiday.jpg"))
+        # Test debounce logic within 3s
+        self.assertFalse(handler._should_process("holiday.jpg"))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            watcher = HotFolderWatcher(watch_dir=Path(tmp_dir))
+            watcher.start()
+            self.assertTrue(watcher._is_running)
+            watcher.stop()
+            self.assertFalse(watcher._is_running)
+
+    def test_network_info_and_qr_code(self):
+        """Verifies LAN IP detection and standalone SVG QR code generation."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/system/network")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("local_ip", data)
+                self.assertIn("port", data)
+                self.assertIn("lan_url", data)
+                self.assertIn("qr_code_svg", data)
+                self.assertTrue(data["qr_code_svg"].startswith("<svg") or "<svg" in data["qr_code_svg"])
+                self.assertIn(str(data["port"]), data["lan_url"])
+        asyncio.run(_run())
+
+    def test_locked_folder_lifecycle(self):
+        """Tests PIN setup, verification, locking/unlocking photos, and token authorization."""
+        # Reset PIN state for clean test isolation
+        with get_db_connection() as conn:
+            conn.execute("DELETE FROM security_settings WHERE key = 'locked_folder_pin';")
+            conn.commit()
+
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                # 1. Status check
+                resp = await client.get("/api/locked/status")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertFalse(data.get("has_pin"))
+                self.assertIn("locked_count", data)
+
+                # 2. Setup PIN (Reject invalid PINs)
+                resp_bad = await client.post("/api/locked/setup-pin", json={"pin": "123"})
+                self.assertIn(resp_bad.status_code, [400, 422])
+                resp_letters = await client.post("/api/locked/setup-pin", json={"pin": "abcd"})
+                self.assertIn(resp_letters.status_code, [400, 422])
+
+                # Setup valid 4-digit PIN
+                resp_ok = await client.post("/api/locked/setup-pin", json={"pin": "7890"})
+                self.assertEqual(resp_ok.status_code, 200)
+                self.assertTrue(resp_ok.json().get("success"))
+
+                # 3. Verify PIN
+                resp_wrong = await client.post("/api/locked/verify-pin", json={"pin": "0000"})
+                self.assertEqual(resp_wrong.status_code, 401)
+
+                resp_verify = await client.post("/api/locked/verify-pin", json={"pin": "7890"})
+                self.assertEqual(resp_verify.status_code, 200)
+                token = resp_verify.json().get("token")
+                self.assertIsNotNone(token)
+                self.assertTrue(len(token) > 10)
+
+                # 4. Lock a photo if one exists
+                photos = get_photos(limit=1, is_locked=False)
+                if photos:
+                    p_id = photos[0]["id"]
+                    lock_resp = await client.post("/api/photos/lock", json={"photo_ids": [p_id]})
+                    self.assertEqual(lock_resp.status_code, 200)
+                    self.assertTrue(lock_resp.json().get("success"))
+
+                    # Access locked photos without token -> 401
+                    resp_no_token = await client.get("/api/locked/photos")
+                    self.assertEqual(resp_no_token.status_code, 401)
+
+                    # Access locked photos with valid token -> 200
+                    resp_locked = await client.get(f"/api/locked/photos?token={token}")
+                    self.assertEqual(resp_locked.status_code, 200)
+                    locked_ids = [p["id"] for p in resp_locked.json().get("photos", [])]
+                    self.assertIn(p_id, locked_ids)
+
+                    # Verify photo is excluded from regular get_photos
+                    regular_photos = get_photos(limit=50, is_locked=False)
+                    self.assertNotIn(p_id, [p["id"] for p in regular_photos])
+
+                    # Unlock photo (requires token)
+                    unlock_resp = await client.post("/api/photos/unlock", json={"photo_ids": [p_id], "token": token})
+                    self.assertEqual(unlock_resp.status_code, 200)
+                    self.assertTrue(unlock_resp.json().get("success"))
+
+                    # Verify photo returns to regular photos
+                    restored_photos = get_photos(limit=50, is_locked=False)
+                    self.assertIn(p_id, [p["id"] for p in restored_photos])
+
+        asyncio.run(_run())
+
+    def test_ocr_engine_and_endpoint(self):
+        """Tests OCR text extraction engine and HTTP endpoints."""
+        import tempfile
+        from PIL import Image, ImageDraw
+        from backend.ocr_engine import extract_ocr_text
+
+        # Create temporary synthetic test image with clean text
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        try:
+            img = Image.new("RGB", (400, 100), color=(255, 255, 255))
+            draw = ImageDraw.Draw(img)
+            draw.text((20, 35), "GOOGLE PHOTOS LOCAL OCR", fill=(0, 0, 0))
+            img.save(tmp_path)
+
+            text = extract_ocr_text(tmp_path)
+            self.assertIn("PHOTOS", text.upper())
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+        # Test endpoint with existing photo
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                photos = get_photos(limit=1, media_type="image")
+                if photos:
+                    p_id = photos[0]["id"]
+                    resp = await client.get(f"/api/photos/{p_id}/ocr")
+                    self.assertEqual(resp.status_code, 200)
+                    self.assertIn("ocr_text", resp.json())
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()
+
