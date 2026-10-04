@@ -112,6 +112,63 @@ CHANGELOG:
         </svg>
       </button>
 
+      <!-- Grid Density Selector (Google Photos Mobile Layout Controller) -->
+      <div class="grid-density-dropdown" id="gridDensityDropdown">
+        <button class="icon-btn" id="gridDensityBtn" title="Atur Grid Foto (Pinch layar atau klik)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </button>
+        <div class="grid-density-menu hidden" id="gridDensityMenu">
+          <div class="grid-menu-title">Tampilan Grid Foto</div>
+          <button type="button" class="grid-density-opt" data-cols="1">
+            <span class="opt-icon">█</span>
+            <div class="opt-info">
+              <span class="opt-name">1 Kolom</span>
+              <span class="opt-desc">Tampilan Penuh / Detail</span>
+            </div>
+          </button>
+          <button type="button" class="grid-density-opt" data-cols="2">
+            <span class="opt-icon">▌▌</span>
+            <div class="opt-info">
+              <span class="opt-name">2 Kolom</span>
+              <span class="opt-desc">Besar / Nyaman</span>
+            </div>
+          </button>
+          <button type="button" class="grid-density-opt active" data-cols="3">
+            <span class="opt-icon">⊞</span>
+            <div class="opt-info">
+              <span class="opt-name">3 Kolom</span>
+              <span class="opt-desc">Standar Google Photos</span>
+            </div>
+          </button>
+          <button type="button" class="grid-density-opt" data-cols="4">
+            <span class="opt-icon">▦</span>
+            <div class="opt-info">
+              <span class="opt-name">4 Kolom</span>
+              <span class="opt-desc">Ringkas / Bulan</span>
+            </div>
+          </button>
+          <button type="button" class="grid-density-opt" data-cols="5">
+            <span class="opt-icon">▤</span>
+            <div class="opt-info">
+              <span class="opt-name">5 Kolom</span>
+              <span class="opt-desc">Tinjauan Mini / Tahun</span>
+            </div>
+          </button>
+          <button type="button" class="grid-density-opt" data-cols="auto">
+            <span class="opt-icon">⚡</span>
+            <div class="opt-info">
+              <span class="opt-name">Otomatis</span>
+              <span class="opt-desc">Responsif Sesuai Layar</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
       <!-- LAN Mode / QR Code Mobile Quick-Access -->
       <button class="icon-btn" id="lanShareBtn" title="Buka di HP / WiFi LAN (QR Code)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1386,6 +1443,25 @@ CHANGELOG:
         </button>
       </div>
     </div>
+  </div>
+
+  <!-- Floating Mobile Grid Controller (Google Photos Style Quick-Switcher) -->
+  <div class="mobile-grid-fab" id="mobileGridFab">
+    <button type="button" class="grid-fab-btn" id="mobileGridPrevBtn" title="Perbesar Foto (Kurangi Kolom)">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
+    <button type="button" class="grid-fab-label-btn" id="mobileGridLabelBtn" title="Ubah Tampilan Grid">
+      <span class="grid-fab-icon">⊞</span>
+      <span class="grid-fab-label" id="mobileGridLabel">3 Kolom</span>
+    </button>
+    <button type="button" class="grid-fab-btn" id="mobileGridNextBtn" title="Perkecil Foto (Tambah Kolom)">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
   </div>
 
   <!-- Toast Notification Container -->

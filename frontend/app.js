@@ -265,6 +265,16 @@
     lanUrlInput: document.getElementById("lanUrlInput"),
     lanCopyUrlBtn: document.getElementById("lanCopyUrlBtn"),
 
+    // Google Photos Mobile & Desktop Grid Density Controller
+    gridDensityDropdown: document.getElementById("gridDensityDropdown"),
+    gridDensityBtn: document.getElementById("gridDensityBtn"),
+    gridDensityMenu: document.getElementById("gridDensityMenu"),
+    mobileGridFab: document.getElementById("mobileGridFab"),
+    mobileGridPrevBtn: document.getElementById("mobileGridPrevBtn"),
+    mobileGridLabelBtn: document.getElementById("mobileGridLabelBtn"),
+    mobileGridLabel: document.getElementById("mobileGridLabel"),
+    mobileGridNextBtn: document.getElementById("mobileGridNextBtn"),
+
     // Locked Folder (Phase 9)
     lockedChip: document.getElementById("lockedChip"),
     lockedBadgeCount: document.getElementById("lockedBadgeCount"),
@@ -345,6 +355,7 @@
   // --------------------------------------------------------------------------
   function init() {
     setupTheme();
+    initGridDensity();
     initPWA();
     setupEventListeners();
     setupWebSocket();
@@ -372,6 +383,136 @@
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("gp_theme", next);
     updateMapTilesTheme();
+  }
+
+  // --------------------------------------------------------------------------
+  // Google Photos Mobile & Desktop Grid Density Controller
+  // --------------------------------------------------------------------------
+  let currentGridCols = localStorage.getItem("google_photos_grid_cols") || (window.innerWidth <= 768 ? "3" : "auto");
+
+  function initGridDensity() {
+    setGridColumns(currentGridCols, false);
+  }
+
+  function getCurrentGridColumns() {
+    if (currentGridCols === "auto") {
+      const width = window.innerWidth;
+      if (width <= 480) return 3;
+      if (width <= 768) return 4;
+      if (width <= 1200) return 5;
+      return 6;
+    }
+    const parsed = parseInt(currentGridCols, 10);
+    return isNaN(parsed) ? 3 : parsed;
+  }
+
+  function setGridColumns(cols, notify = true) {
+    currentGridCols = cols.toString();
+    localStorage.setItem("google_photos_grid_cols", currentGridCols);
+
+    document.body.classList.remove("grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4", "grid-cols-5", "grid-cols-6", "grid-cols-auto");
+
+    let labelText = "3 Kolom";
+    let iconChar = "⊞";
+
+    if (currentGridCols === "auto") {
+      document.body.classList.add("grid-cols-auto");
+      document.documentElement.style.removeProperty("--grid-columns");
+      document.documentElement.style.removeProperty("--grid-gap");
+      labelText = "Otomatis";
+      iconChar = "⚡";
+    } else {
+      const numCols = parseInt(currentGridCols, 10);
+      document.body.classList.add(`grid-cols-${numCols}`);
+      document.documentElement.style.setProperty("--grid-columns", numCols);
+
+      const gap = numCols === 1 ? "16px" : numCols === 2 ? "6px" : numCols === 3 ? "4px" : "3px";
+      document.documentElement.style.setProperty("--grid-gap", gap);
+
+      labelText = `${numCols} Kolom`;
+      const icons = { "1": "█", "2": "▌▌", "3": "⊞", "4": "▦", "5": "▤", "6": "▦" };
+      iconChar = icons[currentGridCols] || "⊞";
+    }
+
+    // Update active state in dropdown
+    document.querySelectorAll(".grid-density-opt").forEach((opt) => {
+      const optCols = opt.getAttribute("data-cols");
+      opt.classList.toggle("active", optCols === currentGridCols);
+    });
+
+    // Update mobile floating FAB label
+    if (elements.mobileGridLabel) {
+      elements.mobileGridLabel.textContent = labelText;
+    }
+    const fabIcon = document.querySelector(".grid-fab-icon");
+    if (fabIcon) {
+      fabIcon.textContent = iconChar;
+    }
+
+    if (notify) {
+      showToast(`Grid: ${labelText}`);
+      if (navigator.vibrate) {
+        try { navigator.vibrate(12); } catch (_) {}
+      }
+    }
+  }
+
+  function changeGridColumns(delta) {
+    const colsList = [1, 2, 3, 4, 5];
+    const current = getCurrentGridColumns();
+    let currentIndex = colsList.indexOf(current);
+    if (currentIndex === -1) currentIndex = 2; // default 3
+
+    let newIndex = currentIndex + delta;
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex >= colsList.length) newIndex = colsList.length - 1;
+
+    setGridColumns(colsList[newIndex]);
+  }
+
+  function setupPinchToZoom() {
+    if (!elements.timelineContainer) return;
+
+    let pinchStartDist = 0;
+    let pinchCurrentDist = 0;
+    let isPinching = false;
+
+    elements.timelineContainer.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) {
+        isPinching = true;
+        pinchStartDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    }, { passive: true });
+
+    elements.timelineContainer.addEventListener("touchmove", (e) => {
+      if (isPinching && e.touches.length === 2) {
+        pinchCurrentDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    }, { passive: true });
+
+    elements.timelineContainer.addEventListener("touchend", (e) => {
+      if (isPinching && e.touches.length < 2) {
+        isPinching = false;
+        if (pinchStartDist > 30 && pinchCurrentDist > 30) {
+          const ratio = pinchCurrentDist / pinchStartDist;
+          if (ratio > 1.25) {
+            // Pinch out (fingers moving apart) -> Zoom in (larger photos, fewer columns)
+            changeGridColumns(-1);
+          } else if (ratio < 0.8) {
+            // Pinch in (fingers moving together) -> Zoom out (smaller photos, more columns)
+            changeGridColumns(1);
+          }
+        }
+        pinchStartDist = 0;
+        pinchCurrentDist = 0;
+      }
+    }, { passive: true });
   }
 
   // --------------------------------------------------------------------------
@@ -1963,6 +2104,58 @@
     if (elements.tabLanTailscaleBtn) {
       elements.tabLanTailscaleBtn.addEventListener("click", () => setLanModalMode("tailscale"));
     }
+
+    // --- Google Photos Grid Density & Pinch Zoom Events ---
+    if (elements.gridDensityBtn) {
+      elements.gridDensityBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (elements.gridDensityMenu) {
+          elements.gridDensityMenu.classList.toggle("hidden");
+        }
+      });
+    }
+
+    document.addEventListener("click", (e) => {
+      if (elements.gridDensityMenu && !elements.gridDensityMenu.classList.contains("hidden")) {
+        if (!elements.gridDensityDropdown || !elements.gridDensityDropdown.contains(e.target)) {
+          elements.gridDensityMenu.classList.add("hidden");
+        }
+      }
+    });
+
+    document.querySelectorAll(".grid-density-opt").forEach((opt) => {
+      opt.addEventListener("click", () => {
+        const cols = opt.getAttribute("data-cols");
+        if (cols) setGridColumns(cols);
+        if (elements.gridDensityMenu) elements.gridDensityMenu.classList.add("hidden");
+      });
+    });
+
+    if (elements.mobileGridPrevBtn) {
+      elements.mobileGridPrevBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        changeGridColumns(-1);
+      });
+    }
+
+    if (elements.mobileGridNextBtn) {
+      elements.mobileGridNextBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        changeGridColumns(1);
+      });
+    }
+
+    if (elements.mobileGridLabelBtn) {
+      elements.mobileGridLabelBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (elements.gridDensityMenu) {
+          elements.gridDensityMenu.classList.toggle("hidden");
+        }
+      });
+    }
+
+    // Pinch-to-zoom gesture on Timeline for mobile Google Photos experience
+    setupPinchToZoom();
 
     // --- Locked Folder & PIN Events (Phase 9) ---
     if (elements.lockedBackBtn) {
