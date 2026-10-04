@@ -4490,6 +4490,102 @@ body.is-selecting .photo-tile .select-overlay,
   background: rgba(251, 188, 5, 0.15);
 }
 
+.wa-story-icon {
+  color: #25D366;
+  background: rgba(37, 211, 102, 0.2);
+  border: 2px dashed #25D366;
+}
+
+.instagram-icon {
+  color: #fff;
+  background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%);
+}
+
+.share-guide-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(37, 211, 102, 0.08);
+  border: 1px solid rgba(37, 211, 102, 0.35);
+  animation: fadeIn 0.25s ease-out;
+}
+
+[data-theme="light"] .share-guide-card {
+  background: #E8F8EE;
+  border-color: #25D366;
+}
+
+.share-guide-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.share-guide-icon {
+  font-size: 1.15rem;
+}
+
+.share-guide-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.share-guide-text {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.share-guide-text b {
+  color: var(--text-primary);
+}
+
+.share-guide-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.share-guide-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  background: #25D366;
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(37, 211, 102, 0.3);
+  transition: all var(--transition-fast);
+}
+
+.share-guide-btn:hover {
+  background: #1EBE5D;
+  transform: translateY(-1px);
+}
+
+.share-guide-dismiss {
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.share-guide-dismiss:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
 .share-tile-info {
   flex: 1;
   min-width: 0;

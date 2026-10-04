@@ -276,7 +276,7 @@
     mobileGridLabel: document.getElementById("mobileGridLabel"),
     mobileGridNextBtn: document.getElementById("mobileGridNextBtn"),
 
-    // Media Share Controller (WhatsApp, Instagram, Telegram, Native & Download)
+    // Media Share Controller (WhatsApp Story, WhatsApp Chat, Instagram, Telegram, Native & Download)
     shareSelectedBtn: document.getElementById("shareSelectedBtn"),
     lightboxShareBtn: document.getElementById("lightboxShareBtn"),
     shareModalWrapper: document.getElementById("shareModalWrapper"),
@@ -288,11 +288,19 @@
     sharePreviewFilename: document.getElementById("sharePreviewFilename"),
     sharePreviewDate: document.getElementById("sharePreviewDate"),
     sharePreviewRes: document.getElementById("sharePreviewRes"),
-    shareNativeBtn: document.getElementById("shareNativeBtn"),
+    shareWhatsAppStoryBtn: document.getElementById("shareWhatsAppStoryBtn"),
     shareWhatsAppBtn: document.getElementById("shareWhatsAppBtn"),
+    shareInstagramBtn: document.getElementById("shareInstagramBtn"),
+    shareNativeBtn: document.getElementById("shareNativeBtn"),
     shareTelegramBtn: document.getElementById("shareTelegramBtn"),
     shareDownloadBtn: document.getElementById("shareDownloadBtn"),
     shareCopyLinkBtn: document.getElementById("shareCopyLinkBtn"),
+    shareGuideCard: document.getElementById("shareGuideCard"),
+    shareGuideIcon: document.getElementById("shareGuideIcon"),
+    shareGuideTitle: document.getElementById("shareGuideTitle"),
+    shareGuideText: document.getElementById("shareGuideText"),
+    shareGuideAppBtn: document.getElementById("shareGuideAppBtn"),
+    shareGuideDismissBtn: document.getElementById("shareGuideDismissBtn"),
 
     // Storage & Media Analytics Dashboard
     storageChip: document.getElementById("storageChip"),
@@ -2222,18 +2230,24 @@
       elements.tabLanTailscaleBtn.addEventListener("click", () => setLanModalMode("tailscale"));
     }
 
-    // --- Media Share Sheet Events (WhatsApp, Instagram, Telegram, Native & Save) ---
+    // --- Media Share Sheet Events (WhatsApp Story, WhatsApp Chat, Instagram, Telegram, Native & Save) ---
     if (elements.shareModalCloseBtn) {
       elements.shareModalCloseBtn.addEventListener("click", closeShareModal);
     }
     if (elements.shareModalBackdrop) {
       elements.shareModalBackdrop.addEventListener("click", closeShareModal);
     }
-    if (elements.shareNativeBtn) {
-      elements.shareNativeBtn.addEventListener("click", shareViaNativeApp);
+    if (elements.shareWhatsAppStoryBtn) {
+      elements.shareWhatsAppStoryBtn.addEventListener("click", shareToWhatsAppStory);
     }
     if (elements.shareWhatsAppBtn) {
       elements.shareWhatsAppBtn.addEventListener("click", shareToWhatsApp);
+    }
+    if (elements.shareInstagramBtn) {
+      elements.shareInstagramBtn.addEventListener("click", shareToInstagram);
+    }
+    if (elements.shareNativeBtn) {
+      elements.shareNativeBtn.addEventListener("click", shareViaNativeApp);
     }
     if (elements.shareTelegramBtn) {
       elements.shareTelegramBtn.addEventListener("click", shareToTelegram);
@@ -2243,6 +2257,9 @@
     }
     if (elements.shareCopyLinkBtn) {
       elements.shareCopyLinkBtn.addEventListener("click", shareCopyMediaLink);
+    }
+    if (elements.shareGuideDismissBtn) {
+      elements.shareGuideDismissBtn.addEventListener("click", hideShareGuidance);
     }
 
     // --- Storage Analytics Modal Events ---
@@ -4054,9 +4071,61 @@
   }
 
   // --------------------------------------------------------------------------
-  // Media Share Sheet Controller (WhatsApp, Instagram, Telegram, Native & Save)
+  // Media Share Sheet Controller (WhatsApp Story, WhatsApp Chat, Instagram, Telegram, Native & Save)
   // --------------------------------------------------------------------------
   let currentSharePhoto = null;
+
+  function downloadMediaBlob(photo) {
+    if (!photo) return;
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+    const fallbackExt = isVideo ? "mp4" : "jpg";
+    const fname = photo.filename || `media_${photo.id}.${fallbackExt}`;
+    const a = document.createElement("a");
+    a.href = `/api/media/${photo.id}?download=1`;
+    a.download = fname;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try {
+        if (a.parentNode) a.parentNode.removeChild(a);
+      } catch (e) {}
+    }, 800);
+  }
+
+  async function fetchMediaAsFile(photo) {
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+    const fallbackExt = isVideo ? "mp4" : "jpg";
+    const fname = photo.filename || `media_${photo.id}.${fallbackExt}`;
+    const res = await fetch(`/api/media/${photo.id}?download=1`);
+    if (!res.ok) throw new Error("Gagal mengunduh berkas media dari server");
+    const blob = await res.blob();
+    const mimeType = blob.type || (isVideo ? "video/mp4" : "image/jpeg");
+    return new File([blob], fname, { type: mimeType, lastModified: Date.now() });
+  }
+
+  function showShareGuidance(options) {
+    if (!elements.shareGuideCard) return;
+    elements.shareGuideCard.classList.remove("hidden");
+    if (elements.shareGuideIcon) elements.shareGuideIcon.textContent = options.icon || "✅";
+    if (elements.shareGuideTitle) elements.shareGuideTitle.textContent = options.title || "Berkas Otomatis Diunduh!";
+    if (elements.shareGuideText) elements.shareGuideText.innerHTML = options.text;
+    if (elements.shareGuideAppBtn) {
+      elements.shareGuideAppBtn.href = options.appUrl || "whatsapp://";
+      elements.shareGuideAppBtn.textContent = options.appLabel || "Buka Aplikasi";
+      if (options.appUrl && options.appUrl.startsWith("http")) {
+        elements.shareGuideAppBtn.target = "_blank";
+      } else {
+        elements.shareGuideAppBtn.removeAttribute("target");
+      }
+    }
+  }
+
+  function hideShareGuidance() {
+    if (elements.shareGuideCard) {
+      elements.shareGuideCard.classList.add("hidden");
+    }
+  }
 
   function openShareModal(photo) {
     if (!photo) {
@@ -4064,6 +4133,7 @@
       return;
     }
     currentSharePhoto = photo;
+    hideShareGuidance();
 
     if (elements.sharePreviewThumb) {
       elements.sharePreviewThumb.src = `/api/thumbnail/${photo.id}`;
@@ -4094,8 +4164,8 @@
 
     if (elements.shareModalSubtitle) {
       elements.shareModalSubtitle.textContent = isVideo
-        ? "Bagikan video ini langsung ke WhatsApp, Telegram, atau simpan ke galeri ponsel."
-        : "Bagikan foto ini langsung ke WhatsApp, Telegram, Instagram, atau aplikasi lain.";
+        ? "Bagikan video ini langsung ke WhatsApp Story, Instagram, Telegram, atau simpan ke galeri ponsel."
+        : "Bagikan foto ini langsung ke WhatsApp Status/Story, Instagram, Telegram, atau simpan ke galeri.";
     }
 
     if (elements.shareModalWrapper) {
@@ -4104,6 +4174,7 @@
   }
 
   function closeShareModal() {
+    hideShareGuidance();
     if (elements.shareModalWrapper) {
       elements.shareModalWrapper.classList.add("hidden");
     }
@@ -4124,19 +4195,148 @@
     }
   }
 
+  async function shareToWhatsAppStory() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    hideShareGuidance();
+
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+
+    // 1. Immediately trigger automatic media file download so it's in device storage / Gallery!
+    downloadMediaBlob(photo);
+    showToast(`Mengunduh ${isVideo ? "video" : "foto"} ke Galeri HP... ⏳`, null, null, 2500);
+
+    // 2. Try native file share first if supported (Android/iOS will open share sheet with WhatsApp Status!)
+    if (navigator.canShare) {
+      try {
+        const file = await fetchMediaAsFile(photo);
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file]
+          });
+          showToast("Berhasil dibagikan ke WhatsApp! 🚀");
+          return;
+        }
+      } catch (err) {
+        if (err.name === "AbortError") {
+          return; // User canceled dialog, media is safely in gallery
+        }
+        console.warn("Direct file share not permitted on this origin:", err);
+      }
+    }
+
+    // 3. Fallback: media is downloaded to Gallery, show clear instructions and auto-open WhatsApp
+    showShareGuidance({
+      icon: "🟢",
+      title: "Media Tersimpan di Galeri Ponsel!",
+      text: `Berkas ${isVideo ? "video" : "foto"} telah otomatis diunduh ke Galeri ponsel Anda.<br><br><b>Cara posting ke WhatsApp Status / Story:</b><br>1. Buka <b>WhatsApp</b><br>2. Buka tab <b>Pembaruan (Status)</b><br>3. Tap ikon <b>Kamera 📷</b> (foto/video ini otomatis muncul di urutan paling atas!)`,
+      appUrl: "whatsapp://",
+      appLabel: "Buka WhatsApp Sekarang"
+    });
+
+    // Auto-launch WhatsApp app after download begins
+    setTimeout(() => {
+      try {
+        window.location.href = "whatsapp://";
+      } catch (e) {
+        console.warn("Could not launch whatsapp:// automatically:", e);
+      }
+    }, 700);
+  }
+
+  async function shareToWhatsApp() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    hideShareGuidance();
+
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+
+    // 1. Automatically download media file to device
+    downloadMediaBlob(photo);
+    showToast(`Mengunduh ${isVideo ? "video" : "foto"} ke Galeri HP... ⏳`, null, null, 2500);
+
+    // 2. Try native file share
+    if (navigator.canShare) {
+      try {
+        const file = await fetchMediaAsFile(photo);
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file]
+          });
+          showToast("Berhasil dibagikan! 🚀");
+          return;
+        }
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        console.warn("Direct file share fallback:", err);
+      }
+    }
+
+    // 3. Fallback: Media in Gallery, open WhatsApp
+    showShareGuidance({
+      icon: "💬",
+      title: "Media Tersimpan di Galeri Ponsel!",
+      text: `Berkas ${isVideo ? "video" : "foto"} telah otomatis diunduh ke ponsel Anda.<br><br>Buka <b>WhatsApp</b> > pilih obrolan/grup tujuan > tap ikon <b>Klip Lampiran 📎</b> > pilih <b>Galeri</b> untuk mengirim berkas ini.`,
+      appUrl: "whatsapp://",
+      appLabel: "Buka WhatsApp Sekarang"
+    });
+
+    setTimeout(() => {
+      try {
+        window.location.href = "whatsapp://";
+      } catch (e) {}
+    }, 700);
+  }
+
+  async function shareToInstagram() {
+    const photo = currentSharePhoto;
+    if (!photo) return;
+    hideShareGuidance();
+
+    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
+
+    // 1. Automatically download full media file to gallery
+    downloadMediaBlob(photo);
+    showToast(`Mengunduh ${isVideo ? "video" : "foto"} ke Galeri HP... ⏳`, null, null, 2500);
+
+    // 2. Try native file share
+    if (navigator.canShare) {
+      try {
+        const file = await fetchMediaAsFile(photo);
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file]
+          });
+          showToast("Berhasil dibagikan ke Instagram! 🚀");
+          return;
+        }
+      } catch (err) {
+        if (err.name === "AbortError") return;
+      }
+    }
+
+    // 3. Fallback: Media in Gallery, open Instagram
+    showShareGuidance({
+      icon: "📸",
+      title: "Media Siap untuk Instagram!",
+      text: `Berkas resolusi asli telah tersimpan di Galeri ponsel Anda.<br><br>Buka <b>Instagram</b> > geser ke kanan untuk membuat <b>Story</b> atau tap <b>(+)</b> untuk posting <b>Feed / Reels</b>.`,
+      appUrl: "instagram://",
+      appLabel: "Buka Instagram Sekarang"
+    });
+
+    setTimeout(() => {
+      try {
+        window.location.href = "instagram://";
+      } catch (e) {}
+    }, 700);
+  }
+
   async function shareViaNativeApp() {
     const photo = currentSharePhoto;
     if (!photo) return;
+    hideShareGuidance();
 
     const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
-    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
-    const shareTitle = photo.filename || (isVideo ? "Video Google Photos" : "Foto Google Photos");
-    const shareText = `Lihat ${isVideo ? "video" : "foto"} "${photo.filename || "media"}":`;
-
-    if (!navigator.share) {
-      showToast("Browser tidak mendukung menu share bawaan ponsel. Gunakan WhatsApp, Telegram, atau Simpan ke Galeri di bawah.", null, null, 4000);
-      return;
-    }
 
     const origBtnHtml = elements.shareNativeBtn ? elements.shareNativeBtn.innerHTML : "";
     if (elements.shareNativeBtn) {
@@ -4144,38 +4344,35 @@
     }
 
     try {
-      let sharedFile = false;
+      // 1. Always ensure media is downloaded so user has it in gallery
+      downloadMediaBlob(photo);
+
+      // 2. Try native file share (pure files array without conflicting title/text for target apps)
       if (navigator.canShare) {
         try {
-          const res = await fetch(`/api/media/${photo.id}?download=1`);
-          if (res.ok) {
-            const blob = await res.blob();
-            const fallbackExt = isVideo ? "mp4" : "jpg";
-            const fname = photo.filename || `media_${photo.id}.${fallbackExt}`;
-            const mimeType = blob.type || (isVideo ? "video/mp4" : "image/jpeg");
-            const file = new File([blob], fname, { type: mimeType });
-            if (navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                files: [file],
-                title: shareTitle,
-              });
-              sharedFile = true;
-              showToast("Berhasil dibagikan! 🚀");
-            }
+          const file = await fetchMediaAsFile(photo);
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file]
+            });
+            showToast("Berhasil dibagikan! 🚀");
+            return;
           }
         } catch (fileErr) {
-          console.warn("File sharing not permitted or cancelled, falling back to link share:", fileErr);
+          if (fileErr.name === "AbortError") return;
+          console.warn("Direct file share not allowed by origin policy:", fileErr);
         }
       }
 
-      if (!sharedFile) {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: mediaUrl,
-        });
-        showToast("Berhasil dibagikan! 🚀");
-      }
+      // 3. Fallback when Web Share is restricted on local HTTP origin
+      showShareGuidance({
+        icon: "📱",
+        title: "Berkas Berhasil Disimpan ke HP!",
+        text: `Karena diakses melalui jaringan lokal Wi-Fi (HTTP), browser membatasi menu share file langsung.<br><br><b>Media sudah tersimpan di Galeri HP Anda</b> dan siap dibagikan ke WhatsApp, Instagram, Telegram, atau aplikasi apa pun yang terpasang di ponsel.`,
+        appUrl: "whatsapp://",
+        appLabel: "Buka WhatsApp"
+      });
+      showToast(`Berkas ${isVideo ? "video" : "foto"} berhasil disimpan ke Galeri HP! 📸✨`, null, null, 3500);
     } catch (err) {
       if (err.name !== "AbortError") {
         console.error("Native share failed:", err);
@@ -4188,44 +4385,58 @@
     }
   }
 
-  function shareToWhatsApp() {
+  async function shareToTelegram() {
     const photo = currentSharePhoto;
     if (!photo) return;
-    const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
-    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
-    const message = `Lihat ${isVideo ? "video" : "foto"} "${photo.filename}":\n${mediaUrl}`;
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, "_blank", "noopener,noreferrer");
-    showToast("Membuka WhatsApp... 💬");
-  }
+    hideShareGuidance();
 
-  function shareToTelegram() {
-    const photo = currentSharePhoto;
-    if (!photo) return;
     const isVideo = photo.media_type === "video" || (photo.filename && /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(photo.filename));
-    const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
-    const message = `Lihat ${isVideo ? "video" : "foto"} "${photo.filename}"`;
-    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(mediaUrl)}&text=${encodeURIComponent(message)}`;
-    window.open(tgUrl, "_blank", "noopener,noreferrer");
-    showToast("Membuka Telegram... ✈️");
+
+    downloadMediaBlob(photo);
+    showToast(`Mengunduh ${isVideo ? "video" : "foto"} ke HP... ⏳`, null, null, 2500);
+
+    if (navigator.canShare) {
+      try {
+        const file = await fetchMediaAsFile(photo);
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file]
+          });
+          showToast("Berhasil dibagikan ke Telegram! 🚀");
+          return;
+        }
+      } catch (err) {
+        if (err.name === "AbortError") return;
+      }
+    }
+
+    showShareGuidance({
+      icon: "✈️",
+      title: "Media Tersimpan di Galeri Ponsel!",
+      text: `Berkas ${isVideo ? "video" : "foto"} telah otomatis diunduh ke ponsel Anda.<br><br>Buka <b>Telegram</b> > pilih kontak atau grup tujuan > tap ikon <b>Klip Lampiran 📎</b> untuk mengirim berkas resolusi asli ini.`,
+      appUrl: "tg://",
+      appLabel: "Buka Telegram Sekarang"
+    });
+
+    setTimeout(() => {
+      try {
+        window.location.href = "tg://";
+      } catch (e) {}
+    }, 700);
   }
 
   function shareDownloadMedia() {
     const photo = currentSharePhoto;
     if (!photo) return;
-    const downloadUrl = `/api/media/${photo.id}?download=1`;
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.download = photo.filename || `media_${photo.id}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast("Mengunduh ke galeri HP! Siap dibagikan ke Instagram atau aplikasi lain 📸✨", null, null, 3500);
+    hideShareGuidance();
+    downloadMediaBlob(photo);
+    showToast("Mengunduh berkas asli ke Galeri HP! Siap dibagikan ke Instagram atau aplikasi lain 📸✨", null, null, 3500);
   }
 
   function shareCopyMediaLink() {
     const photo = currentSharePhoto;
     if (!photo) return;
+    hideShareGuidance();
     const mediaUrl = `${window.location.origin}/api/media/${photo.id}?download=1`;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(mediaUrl)
