@@ -67,6 +67,7 @@
     searchInput: document.getElementById("searchInput"),
     clearSearchBtn: document.getElementById("clearSearchBtn"),
     searchBadge: document.getElementById("searchBadge"),
+    searchSuggestions: document.getElementById("searchSuggestions"),
     syncPill: document.getElementById("syncPill"),
     syncIndicator: document.getElementById("syncIndicator"),
     syncText: document.getElementById("syncText"),
@@ -292,6 +293,23 @@
     shareTelegramBtn: document.getElementById("shareTelegramBtn"),
     shareDownloadBtn: document.getElementById("shareDownloadBtn"),
     shareCopyLinkBtn: document.getElementById("shareCopyLinkBtn"),
+
+    // Storage & Media Analytics Dashboard
+    storageChip: document.getElementById("storageChip"),
+    storageModalWrapper: document.getElementById("storageModalWrapper"),
+    storageModalBackdrop: document.getElementById("storageModalBackdrop"),
+    storageModalCloseBtn: document.getElementById("storageModalCloseBtn"),
+    storageTotalBytes: document.getElementById("storageTotalBytes"),
+    storageTotalItems: document.getElementById("storageTotalItems"),
+    storageVideoBytes: document.getElementById("storageVideoBytes"),
+    storageVideoCount: document.getElementById("storageVideoCount"),
+    storageImageBytes: document.getElementById("storageImageBytes"),
+    storageImageCount: document.getElementById("storageImageCount"),
+    storageScreenshotBytes: document.getElementById("storageScreenshotBytes"),
+    storageScreenshotCount: document.getElementById("storageScreenshotCount"),
+    storageLargeFilesList: document.getElementById("storageLargeFilesList"),
+    storageLargeCountBadge: document.getElementById("storageLargeCountBadge"),
+    storageYearlyList: document.getElementById("storageYearlyList"),
 
     // Locked Folder (Phase 9)
     lockedChip: document.getElementById("lockedChip"),
@@ -1688,6 +1706,53 @@
       }, 350);
     });
 
+    // Smart Search Assist Suggestions
+    if (elements.searchSuggestions) {
+      elements.searchInput.addEventListener("focus", () => {
+        elements.searchSuggestions.classList.remove("hidden");
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!elements.searchInput.contains(e.target) && !elements.searchSuggestions.contains(e.target)) {
+          elements.searchSuggestions.classList.add("hidden");
+        }
+      });
+
+      elements.searchSuggestions.addEventListener("click", (e) => {
+        const btn = e.target.closest(".sugg-chip");
+        if (!btn) return;
+
+        const searchTerm = btn.dataset.search;
+        const filterCat = btn.dataset.filter;
+        const filterYear = btn.dataset.year;
+
+        elements.searchSuggestions.classList.add("hidden");
+        elements.searchInput.blur();
+
+        if (filterCat) {
+          if (filterCat === "favorit") {
+            const favChip = document.getElementById("favoritesChip");
+            if (favChip) favChip.click();
+          } else {
+            const catChip = document.querySelector(`.chip[data-category="${filterCat}"]`);
+            if (catChip) catChip.click();
+          }
+        } else if (filterYear) {
+          state.currentYear = parseInt(filterYear);
+          state.currentMonth = null;
+          state.searchQuery = "";
+          elements.searchInput.value = "";
+          fetchPhotos(true);
+          showToast(`Menampilkan foto tahun ${filterYear} 📅`);
+        } else if (searchTerm) {
+          elements.searchInput.value = searchTerm;
+          elements.clearSearchBtn.classList.remove("hidden");
+          state.searchQuery = searchTerm;
+          fetchPhotos(true);
+        }
+      });
+    }
+
     elements.clearSearchBtn.addEventListener("click", () => {
       elements.searchInput.value = "";
       elements.clearSearchBtn.classList.add("hidden");
@@ -1750,6 +1815,12 @@
         hidePhotoMapView();
         hideDuplicatesView();
         openLockedFolderWithPin();
+      } else if (state.currentCategory === "storage") {
+        openStorageModal();
+        document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+        const prevChip = document.querySelector(`.chip[data-category="all"]`);
+        if (prevChip) prevChip.classList.add("active");
+        state.currentCategory = "all";
       } else {
         hideTrashView();
         hideAlbumView();
@@ -1820,6 +1891,14 @@
       if (elements.shareModalWrapper && !elements.shareModalWrapper.classList.contains("hidden")) {
         if (e.key === "Escape") {
           closeShareModal();
+          return;
+        }
+      }
+
+      // Close storage modal if open
+      if (elements.storageModalWrapper && !elements.storageModalWrapper.classList.contains("hidden")) {
+        if (e.key === "Escape") {
+          closeStorageModal();
           return;
         }
       }
@@ -2164,6 +2243,14 @@
     }
     if (elements.shareCopyLinkBtn) {
       elements.shareCopyLinkBtn.addEventListener("click", shareCopyMediaLink);
+    }
+
+    // --- Storage Analytics Modal Events ---
+    if (elements.storageModalCloseBtn) {
+      elements.storageModalCloseBtn.addEventListener("click", closeStorageModal);
+    }
+    if (elements.storageModalBackdrop) {
+      elements.storageModalBackdrop.addEventListener("click", closeStorageModal);
     }
 
     // --- Google Photos Grid Density & Pinch Zoom Events ---
@@ -4146,6 +4233,115 @@
         .catch(() => window.prompt("Salin tautan media:", mediaUrl));
     } else {
       window.prompt("Salin tautan media:", mediaUrl);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Storage & Media Analytics Dashboard Controller
+  // --------------------------------------------------------------------------
+  async function openStorageModal() {
+    if (!elements.storageModalWrapper) return;
+    elements.storageModalWrapper.classList.remove("hidden");
+    elements.storageTotalBytes.textContent = "Menghitung...";
+    elements.storageTotalItems.textContent = "Memuat data arsip...";
+    elements.storageLargeFilesList.innerHTML = '<div class="spinner-small" style="margin: 20px auto;"></div>';
+
+    try {
+      const res = await fetch("/api/analytics/storage");
+      if (!res.ok) throw new Error("Gagal mengambil analitik penyimpanan");
+      const data = await res.json();
+      renderStorageAnalytics(data);
+    } catch (e) {
+      console.error("Error loading storage analytics:", e);
+      elements.storageTotalBytes.textContent = "Gagal memuat";
+      elements.storageLargeFilesList.innerHTML = '<div style="color:var(--google-red); padding:10px;">Gagal memuat data kapasitas.</div>';
+    }
+  }
+
+  function closeStorageModal() {
+    if (elements.storageModalWrapper) {
+      elements.storageModalWrapper.classList.add("hidden");
+    }
+  }
+
+  function renderStorageAnalytics(data) {
+    const s = data.stats || {};
+    const totalBytes = s.total_bytes || 0;
+    const totalItems = s.total_items || 0;
+
+    if (elements.storageTotalBytes) elements.storageTotalBytes.textContent = formatBytes(totalBytes);
+    if (elements.storageTotalItems) elements.storageTotalItems.textContent = `${totalItems.toLocaleString()} media di SSD`;
+    if (elements.storageVideoBytes) elements.storageVideoBytes.textContent = formatBytes(s.video_bytes || 0);
+    if (elements.storageVideoCount) elements.storageVideoCount.textContent = `${(s.video_count || 0).toLocaleString()} video`;
+    if (elements.storageImageBytes) elements.storageImageBytes.textContent = formatBytes(s.image_bytes || 0);
+    if (elements.storageImageCount) elements.storageImageCount.textContent = `${(s.image_count || 0).toLocaleString()} foto`;
+    if (elements.storageScreenshotBytes) elements.storageScreenshotBytes.textContent = formatBytes(s.screenshot_bytes || 0);
+    if (elements.storageScreenshotCount) elements.storageScreenshotCount.textContent = `${(s.screenshot_count || 0).toLocaleString()} item`;
+
+    // Render Largest Files
+    const largest = data.largest_files || [];
+    if (elements.storageLargeCountBadge) {
+      elements.storageLargeCountBadge.textContent = `${largest.length} item`;
+    }
+    if (elements.storageLargeFilesList) {
+      if (largest.length === 0) {
+        elements.storageLargeFilesList.innerHTML = '<div style="color:var(--text-tertiary); padding:10px;">Tidak ada berkas besar ditemukan.</div>';
+      } else {
+        elements.storageLargeFilesList.innerHTML = "";
+        largest.forEach((file) => {
+          const row = document.createElement("div");
+          row.className = "storage-file-row";
+          const isVid = file.media_type === "video";
+          const icon = isVid ? "🎬" : "📷";
+
+          row.innerHTML = `
+            <img class="storage-file-thumb" src="/api/thumbnail/${file.id}" alt="${escapeHtml(file.filename)}" onerror="this.style.display='none'" />
+            <div class="storage-file-info">
+              <div class="storage-file-name" title="${escapeHtml(file.filename)}">${icon} ${escapeHtml(file.filename)}</div>
+              <div class="storage-file-sub">${escapeHtml(file.folder_year || "Unknown")} • ${escapeHtml(file.taken_formatted || "")}</div>
+            </div>
+            <div class="storage-file-size">${formatBytes(file.file_size)}</div>
+            <button type="button" class="storage-file-play-btn" data-id="${file.id}">Buka</button>
+          `;
+
+          const openBtn = row.querySelector(".storage-file-play-btn");
+          if (openBtn) {
+            openBtn.addEventListener("click", () => {
+              closeStorageModal();
+              fetch(`/api/photos/${file.id}`)
+                .then((r) => r.json())
+                .then((p) => {
+                  state.photos = [p];
+                  state.lightboxIndex = 0;
+                  renderLightboxPhoto();
+                  elements.lightboxModal.classList.remove("hidden");
+                  document.body.style.overflow = "hidden";
+                })
+                .catch((err) => console.error("Error opening photo detail:", err));
+            });
+          }
+
+          elements.storageLargeFilesList.appendChild(row);
+        });
+      }
+    }
+
+    // Render Yearly Breakdown
+    const yearly = data.yearly_breakdown || [];
+    if (elements.storageYearlyList) {
+      elements.storageYearlyList.innerHTML = "";
+      yearly.forEach((y) => {
+        if (y.total_bytes > 1000000) {
+          const card = document.createElement("div");
+          card.className = "storage-year-card";
+          card.innerHTML = `
+            <span class="storage-year-title">${escapeHtml(y.folder_year)}</span>
+            <span class="storage-year-bytes">${formatBytes(y.total_bytes)}</span>
+            <span class="storage-year-count">${y.count.toLocaleString()} media</span>
+          `;
+          elements.storageYearlyList.appendChild(card);
+        }
+      });
     }
   }
 
