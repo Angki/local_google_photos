@@ -250,6 +250,14 @@ CHANGELOG:
         </svg>
         <span>Favorit</span>
       </button>
+      <button class="action-btn" id="createCollageBtn" title="Buat Kolase Foto (2-6 foto)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="12" y1="3" x2="12" y2="21"></line>
+          <line x1="3" y1="12" x2="12" y2="12"></line>
+        </svg>
+        <span>Kolase</span>
+      </button>
       <button class="action-btn" id="addToAlbumBtn" title="Add to Album">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14"/>
@@ -323,6 +331,9 @@ CHANGELOG:
       <button class="chip" data-category="videos">🎬 Videos Only</button>
       <button class="chip" data-category="albums">📁 Albums</button>
       <button class="chip chip-map" data-category="map" id="mapChip" title="Jelajahi Foto di Peta">🗺️ Photo Map</button>
+      <button class="chip chip-trips" data-category="trips" id="tripsChip" title="Jelajahi Perjalanan & Liburan Otomatis">
+        ✈️ Perjalanan <span class="trash-badge hidden" id="tripsBadgeCount">0</span>
+      </button>
       <button class="chip chip-duplicates" data-category="duplicates" id="duplicatesChip" title="Deteksi Foto Duplikat & Serupa">
         🧹 Duplicates <span class="trash-badge hidden" id="duplicatesBadgeCount">0</span>
       </button>
@@ -643,6 +654,47 @@ CHANGELOG:
         </div>
         <h3>Folder Terkunci Masih Kosong</h3>
         <p>Pilih foto di linimasa lalu klik tombol "Kunci" di toolbar untuk menyembunyikannya ke sini.</p>
+      </div>
+    </main>
+
+    <!-- Smart Trips & Adventures View (Perjalanan & Liburan) -->
+    <main class="album-container hidden" id="tripsContainer">
+      <div class="album-header trips-header">
+        <button class="icon-btn back-btn" id="tripsBackBtn" title="Kembali ke Galeri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="trash-header-info">
+          <h2>✈️ Perjalanan & Liburan</h2>
+          <span class="trash-count-badge" id="tripsCountBadge">Memuat perjalanan...</span>
+        </div>
+      </div>
+
+      <div class="trips-intro-banner">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+        </svg>
+        <span>Koleksi momen perjalanan dan liburan yang terdeteksi otomatis berdasarkan koordinat GPS dan rentang waktu foto.</span>
+      </div>
+
+      <!-- Trips Cards Grid -->
+      <div class="trips-grid-wrapper">
+        <div class="trips-cards-grid" id="tripsGrid">
+          <!-- Dynamically populated trip cards -->
+        </div>
+      </div>
+
+      <!-- Empty Trips State -->
+      <div class="empty-state hidden" id="tripsEmptyState">
+        <div class="trash-empty-icon" style="background: rgba(66, 133, 244, 0.15); color: #4285F4;">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+          </svg>
+        </div>
+        <h3>Belum Ada Perjalanan Terdeteksi</h3>
+        <p>Foto dengan data koordinat GPS akan otomatis dikelompokkan ke dalam kartu perjalanan di sini.</p>
       </div>
     </main>
 
@@ -1620,6 +1672,38 @@ CHANGELOG:
       </div>
 
       <div class="sync-modal-body upload-modal-body">
+        <!-- Mobile Direct Camera & Gallery Shortcuts -->
+        <div class="mobile-upload-shortcuts" id="mobileUploadShortcuts">
+          <button type="button" class="upload-shortcut-card" id="openCameraBtn">
+            <div class="shortcut-icon-circle camera-circle">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </div>
+            <div class="shortcut-text">
+              <span class="shortcut-title">Buka Kamera</span>
+              <span class="shortcut-desc">Ambil foto langsung dari HP</span>
+            </div>
+          </button>
+          <input type="file" id="cameraDirectInput" accept="image/*,video/*" capture="environment" class="hidden">
+
+          <button type="button" class="upload-shortcut-card" id="openGalleryBtn">
+            <div class="shortcut-icon-circle gallery-circle">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+            <div class="shortcut-text">
+              <span class="shortcut-title">Galeri HP</span>
+              <span class="shortcut-desc">Pilih beberapa foto/video</span>
+            </div>
+          </button>
+          <input type="file" id="galleryDirectInput" accept="image/*,video/*" multiple class="hidden">
+        </div>
+
         <!-- Dropzone -->
         <div class="upload-dropzone" id="uploadDropzone">
           <div class="upload-dropzone-inner">
@@ -1782,13 +1866,23 @@ CHANGELOG:
       <span class="mobile-nav-label">Telusuri</span>
     </button>
 
-    <button type="button" class="mobile-nav-item" id="mobileNavAlbums" data-nav="albums">
-      <div class="mobile-nav-icon-wrap">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+    <button type="button" class="mobile-nav-item mobile-nav-upload-pill" id="mobileNavUpload" data-nav="upload" title="Unggah Foto / Buka Kamera">
+      <div class="mobile-nav-icon-wrap upload-center-wrap">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
       </div>
-      <span class="mobile-nav-label">Koleksi</span>
+      <span class="mobile-nav-label">Unggah</span>
+    </button>
+
+    <button type="button" class="mobile-nav-item" id="mobileNavTrips" data-nav="trips">
+      <div class="mobile-nav-icon-wrap">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+        </svg>
+      </div>
+      <span class="mobile-nav-label">Trip</span>
     </button>
 
     <button type="button" class="mobile-nav-item" id="mobileNavFavorites" data-nav="favorites">
@@ -1800,7 +1894,16 @@ CHANGELOG:
       <span class="mobile-nav-label">Favorit</span>
     </button>
 
-    <button type="button" class="mobile-nav-item" id="mobileNavStorage" data-nav="storage">
+    <button type="button" class="mobile-nav-item hidden-mobile" id="mobileNavAlbums" data-nav="albums">
+      <div class="mobile-nav-icon-wrap">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </div>
+      <span class="mobile-nav-label">Koleksi</span>
+    </button>
+
+    <button type="button" class="mobile-nav-item hidden-mobile" id="mobileNavStorage" data-nav="storage">
       <div class="mobile-nav-icon-wrap">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
@@ -1810,6 +1913,84 @@ CHANGELOG:
       <span class="mobile-nav-label">Storage</span>
     </button>
   </nav>
+
+  <!-- Photo Collage Maker Modal -->
+  <div class="sync-modal-wrapper hidden" id="collageModalWrapper" role="dialog" aria-modal="true">
+    <div class="sync-modal-backdrop" id="collageModalBackdrop"></div>
+    <div class="sync-modal-card collage-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="modal-icon-circle" style="background: rgba(168, 85, 247, 0.15); color: #A855F7;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="12" y1="3" x2="12" y2="21"></line>
+              <line x1="3" y1="12" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <div>
+            <h3>🎨 Pembuat Kolase Foto</h3>
+            <span class="sync-stage-text" id="collageSubtitle">Gabungkan foto pilihan menjadi karya artistik</span>
+          </div>
+        </div>
+        <button class="icon-btn" id="collageModalCloseBtn" title="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sync-modal-body collage-modal-body">
+        <!-- Interactive High-Res Canvas Viewport -->
+        <div class="collage-viewport">
+          <canvas id="collageCanvas" class="collage-canvas" width="1200" height="1200"></canvas>
+        </div>
+
+        <!-- Customization Options -->
+        <div class="collage-sidebar-controls">
+          <div class="collage-control-section">
+            <span class="collage-label">Pilihan Tata Letak (Layout)</span>
+            <div class="collage-layout-chips" id="collageLayoutsRow">
+              <!-- Dynamically populated buttons -->
+            </div>
+          </div>
+
+          <div class="collage-control-section">
+            <span class="collage-label">Jarak Antar Foto (Spacing)</span>
+            <div class="collage-pill-group">
+              <button type="button" class="collage-pill-btn active" id="collageGap0Btn" data-gap="0">Rapat (0px)</button>
+              <button type="button" class="collage-pill-btn" id="collageGap12Btn" data-gap="12">Sedang (12px)</button>
+              <button type="button" class="collage-pill-btn" id="collageGap24Btn" data-gap="24">Lebar (24px)</button>
+            </div>
+          </div>
+
+          <div class="collage-control-section">
+            <span class="collage-label">Sudut Lengkung (Border Radius)</span>
+            <div class="collage-pill-group">
+              <button type="button" class="collage-pill-btn active" id="collageRadius0Btn" data-radius="0">Tajam (0px)</button>
+              <button type="button" class="collage-pill-btn" id="collageRadius16Btn" data-radius="16">Melengkung (16px)</button>
+              <button type="button" class="collage-pill-btn" id="collageRadius28Btn" data-radius="28">Bulat (28px)</button>
+            </div>
+          </div>
+
+          <div class="collage-control-section">
+            <span class="collage-label">Warna Latar Belakang</span>
+            <div class="collage-swatches-group">
+              <button type="button" class="collage-swatch active" id="collageColorDarkBtn" data-color="#121212" style="background: #121212;" title="Hitam"></button>
+              <button type="button" class="collage-swatch" id="collageColorLightBtn" data-color="#FFFFFF" style="background: #FFFFFF;" title="Putih"></button>
+              <button type="button" class="collage-swatch" id="collageColorBeigeBtn" data-color="#F5F0EB" style="background: #F5F0EB;" title="Warm Beige"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sync-modal-footer collage-footer">
+        <button class="btn btn-secondary" id="collageCancelBtn">Batal</button>
+        <button class="btn btn-outline" id="collageDownloadBtn">📥 Unduh JPG</button>
+        <button class="btn btn-primary" id="collageSaveArchiveBtn">💾 Simpan ke Galeri</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Full-Screen Stories & Memories Player (Google Photos / Instagram Style) -->
   <div class="stories-modal-wrapper hidden" id="storiesModalWrapper">

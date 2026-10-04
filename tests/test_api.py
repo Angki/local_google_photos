@@ -24,8 +24,10 @@ from backend.database import (
     get_library_stats,
     get_photo_by_id,
     get_photos,
+    get_smart_trips,
     get_storage_analytics,
     get_timeline_hierarchy,
+    get_trip_details,
     init_db,
     restore_photos,
 )
@@ -763,6 +765,45 @@ class TestGooglePhotosTakeout(unittest.TestCase):
                 self.assertIn("largest_files", data)
                 self.assertIn("yearly_breakdown", data)
                 self.assertGreater(data["stats"]["total_bytes"], 0)
+    def test_smart_trips_endpoints(self):
+        """Tests smart trips extraction in database and /api/trips REST endpoints."""
+        # 1. Database level verification
+        trips = get_smart_trips(min_photos=2, limit=10)
+        self.assertIsInstance(trips, list)
+        if trips:
+            sample_trip = trips[0]
+            self.assertIn("trip_id", sample_trip)
+            self.assertIn("title", sample_trip)
+            self.assertIn("photo_count", sample_trip)
+            self.assertIn("sample_photo_ids", sample_trip)
+            self.assertGreaterEqual(sample_trip["photo_count"], 2)
+
+            # Test trip details
+            trip_id = sample_trip["trip_id"]
+            details = get_trip_details(trip_id)
+            self.assertIsNotNone(details)
+            self.assertIn("photos", details)
+            self.assertEqual(len(details["photos"]), sample_trip["photo_count"])
+
+        # 2. REST API endpoint verification
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/trips?limit=5")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("trips", data)
+                self.assertIn("count", data)
+                self.assertIsInstance(data["trips"], list)
+
+                if data["count"] > 0:
+                    trip_obj = data["trips"][0]
+                    t_id = trip_obj["trip_id"]
+                    detail_resp = await client.get(f"/api/trips/{t_id}")
+                    self.assertEqual(detail_resp.status_code, 200)
+                    detail_data = detail_resp.json()
+                    self.assertEqual(detail_data["trip_id"], t_id)
+                    self.assertIn("photos", detail_data)
+                    self.assertEqual(len(detail_data["photos"]), trip_obj["photo_count"])
         asyncio.run(_run())
 
 

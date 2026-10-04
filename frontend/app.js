@@ -327,6 +327,45 @@
     mobileNavAlbums: document.getElementById("mobileNavAlbums"),
     mobileNavFavorites: document.getElementById("mobileNavFavorites"),
     mobileNavStorage: document.getElementById("mobileNavStorage"),
+    mobileNavUpload: document.getElementById("mobileNavUpload"),
+    mobileNavTrips: document.getElementById("mobileNavTrips"),
+
+    // Smart Trips & Adventures (Phase 11)
+    tripsChip: document.getElementById("tripsChip"),
+    tripsBadgeCount: document.getElementById("tripsBadgeCount"),
+    tripsContainer: document.getElementById("tripsContainer"),
+    tripsBackBtn: document.getElementById("tripsBackBtn"),
+    tripsCountBadge: document.getElementById("tripsCountBadge"),
+    tripsGrid: document.getElementById("tripsGrid"),
+    tripsEmptyState: document.getElementById("tripsEmptyState"),
+
+    // Photo Collage Maker (Phase 11)
+    createCollageBtn: document.getElementById("createCollageBtn"),
+    collageModalWrapper: document.getElementById("collageModalWrapper"),
+    collageModalBackdrop: document.getElementById("collageModalBackdrop"),
+    collageModalCloseBtn: document.getElementById("collageModalCloseBtn"),
+    collageSubtitle: document.getElementById("collageSubtitle"),
+    collageCanvas: document.getElementById("collageCanvas"),
+    collageLayoutsRow: document.getElementById("collageLayoutsRow"),
+    collageGap0Btn: document.getElementById("collageGap0Btn"),
+    collageGap12Btn: document.getElementById("collageGap12Btn"),
+    collageGap24Btn: document.getElementById("collageGap24Btn"),
+    collageRadius0Btn: document.getElementById("collageRadius0Btn"),
+    collageRadius16Btn: document.getElementById("collageRadius16Btn"),
+    collageRadius28Btn: document.getElementById("collageRadius28Btn"),
+    collageColorDarkBtn: document.getElementById("collageColorDarkBtn"),
+    collageColorLightBtn: document.getElementById("collageColorLightBtn"),
+    collageColorBeigeBtn: document.getElementById("collageColorBeigeBtn"),
+    collageCancelBtn: document.getElementById("collageCancelBtn"),
+    collageDownloadBtn: document.getElementById("collageDownloadBtn"),
+    collageSaveArchiveBtn: document.getElementById("collageSaveArchiveBtn"),
+
+    // Mobile Direct Camera & Gallery Shortcuts
+    mobileUploadShortcuts: document.getElementById("mobileUploadShortcuts"),
+    openCameraBtn: document.getElementById("openCameraBtn"),
+    cameraDirectInput: document.getElementById("cameraDirectInput"),
+    openGalleryBtn: document.getElementById("openGalleryBtn"),
+    galleryDirectInput: document.getElementById("galleryDirectInput"),
 
     // Full-Screen Stories & Memories Player
     storiesModalWrapper: document.getElementById("storiesModalWrapper"),
@@ -435,6 +474,9 @@
     initMobileBottomNav();
     initScrollToTop();
     initStoriesPlayer();
+    initSmartTrips();
+    initPhotoCollage();
+    initMobileDirectUpload();
     fetchPhotos(true);
   }
 
@@ -992,7 +1034,12 @@
         if (state.currentMonth) {
           params.append("month", state.currentMonth);
         }
-        if (state.currentCategory !== "all") {
+        if (state.tripFilter && state.tripFilter.photo_ids) {
+          params.append("ids", state.tripFilter.photo_ids.join(","));
+          params.set("limit", "500");
+          elements.filterBanner.classList.remove("hidden");
+          elements.filterDesc.textContent = `✈️ ${state.tripFilter.title} (${state.tripFilter.date_label})`;
+        } else if (state.currentCategory !== "all") {
           if (state.currentCategory === "videos") {
             params.append("media_type", "video");
           } else if (state.currentCategory === "favorites") {
@@ -1003,7 +1050,10 @@
         }
         url = `/api/photos?${params.toString()}`;
 
-        if (state.currentCategory !== "all") {
+        if (state.tripFilter) {
+          elements.filterBanner.classList.remove("hidden");
+          elements.filterDesc.textContent = `✈️ ${state.tripFilter.title} (${state.tripFilter.date_label})`;
+        } else if (state.currentCategory !== "all") {
           elements.filterBanner.classList.remove("hidden");
           if (state.currentCategory === "favorites") {
             elements.filterDesc.textContent = "Showing ⭐ FAVORITES";
@@ -1812,6 +1862,7 @@
       state.currentCategory = "all";
       state.currentYear = null;
       state.currentMonth = null;
+      state.tripFilter = null;
       document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
       document.querySelector('[data-category="all"]').classList.add("active");
       fetchPhotos(true);
@@ -1828,36 +1879,49 @@
       state.currentCategory = chip.dataset.category;
       state.currentYear = null;
       state.currentMonth = null;
+      state.tripFilter = null;
       
       if (state.currentCategory === "trash") {
         hideAlbumView();
         hidePhotoMapView();
         hideDuplicatesView();
         hideLockedView();
+        hideTripsView();
         showTrashView();
       } else if (state.currentCategory === "albums") {
         hideTrashView();
         hidePhotoMapView();
         hideDuplicatesView();
         hideLockedView();
+        hideTripsView();
         showAlbumList();
       } else if (state.currentCategory === "map") {
         hideTrashView();
         hideAlbumView();
         hideDuplicatesView();
         hideLockedView();
+        hideTripsView();
         showPhotoMapView();
+      } else if (state.currentCategory === "trips") {
+        hideTrashView();
+        hideAlbumView();
+        hidePhotoMapView();
+        hideDuplicatesView();
+        hideLockedView();
+        showTripsView();
       } else if (state.currentCategory === "duplicates") {
         hideTrashView();
         hideAlbumView();
         hidePhotoMapView();
         hideLockedView();
+        hideTripsView();
         showDuplicatesView();
       } else if (state.currentCategory === "locked") {
         hideTrashView();
         hideAlbumView();
         hidePhotoMapView();
         hideDuplicatesView();
+        hideTripsView();
         openLockedFolderWithPin();
       } else if (state.currentCategory === "storage") {
         openStorageModal();
@@ -1871,6 +1935,7 @@
         hidePhotoMapView();
         hideDuplicatesView();
         hideLockedView();
+        hideTripsView();
         fetchPhotos(true);
       }
     });
@@ -2591,6 +2656,7 @@
         if (elements.addToAlbumBtn) elements.addToAlbumBtn.classList.add("hidden");
         if (elements.deleteSelectedBtn) elements.deleteSelectedBtn.classList.add("hidden");
         if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.add("hidden");
+        if (elements.createCollageBtn) elements.createCollageBtn.classList.add("hidden");
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.remove("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.remove("hidden");
         if (elements.lockSelectedBtn) elements.lockSelectedBtn.classList.add("hidden");
@@ -2598,6 +2664,9 @@
         if (elements.addToAlbumBtn) elements.addToAlbumBtn.classList.remove("hidden");
         if (elements.deleteSelectedBtn) elements.deleteSelectedBtn.classList.remove("hidden");
         if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.remove("hidden");
+        if (elements.createCollageBtn) {
+          elements.createCollageBtn.classList.toggle("hidden", count < 2 || count > 6);
+        }
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.add("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.add("hidden");
         if (elements.lockSelectedBtn) {
@@ -5327,6 +5396,8 @@
     const navItems = [
       elements.mobileNavPhotos,
       elements.mobileNavSearch,
+      elements.mobileNavUpload,
+      elements.mobileNavTrips,
       elements.mobileNavAlbums,
       elements.mobileNavFavorites,
       elements.mobileNavStorage,
@@ -5351,6 +5422,9 @@
     if (elements.lockedContainer && !elements.lockedContainer.classList.contains("hidden")) {
       if (elements.lockedBackBtn) elements.lockedBackBtn.click();
     }
+    if (elements.tripsContainer && !elements.tripsContainer.classList.contains("hidden")) {
+      hideTripsView();
+    }
     if (state.activeView === "trash") {
       state.activeView = "timeline";
       if (elements.trashBanner) elements.trashBanner.classList.add("hidden");
@@ -5366,6 +5440,7 @@
         setMobileNavActive("mobileNavPhotos");
         exitSecondaryViews();
         state.currentCategory = "all";
+        state.tripFilter = null;
         state.searchQuery = "";
         state.currentYear = null;
         state.currentMonth = null;
@@ -5375,6 +5450,22 @@
         });
         fetchPhotos(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
+
+    if (elements.mobileNavUpload) {
+      elements.mobileNavUpload.addEventListener("click", () => {
+        if (elements.uploadModalWrapper) {
+          elements.uploadModalWrapper.classList.remove("hidden");
+        }
+      });
+    }
+
+    if (elements.mobileNavTrips) {
+      elements.mobileNavTrips.addEventListener("click", () => {
+        setMobileNavActive("mobileNavTrips");
+        exitSecondaryViews();
+        showTripsView();
       });
     }
 
@@ -5712,6 +5803,542 @@
         else pauseStory();
       }
     });
+  }
+
+  // --------------------------------------------------------------------------
+  // Smart Trips & Adventures (Perjalanan & Liburan) Controller (Phase 11)
+  // --------------------------------------------------------------------------
+  let loadedTrips = [];
+
+  async function loadSmartTrips() {
+    try {
+      const res = await fetch("/api/trips?limit=80");
+      if (!res.ok) return;
+      const data = await res.json();
+      loadedTrips = data.trips || [];
+
+      if (elements.tripsBadgeCount) {
+        elements.tripsBadgeCount.textContent = loadedTrips.length;
+        elements.tripsBadgeCount.classList.toggle("hidden", loadedTrips.length === 0);
+      }
+      if (elements.tripsCountBadge) {
+        elements.tripsCountBadge.textContent = `${loadedTrips.length} Perjalanan`;
+      }
+
+      renderTripsGrid(loadedTrips);
+    } catch (e) {
+      console.warn("Failed to load smart trips", e);
+    }
+  }
+
+  function renderTripsGrid(trips) {
+    if (!elements.tripsGrid) return;
+    elements.tripsGrid.innerHTML = "";
+
+    if (!trips || trips.length === 0) {
+      if (elements.tripsEmptyState) elements.tripsEmptyState.classList.remove("hidden");
+      elements.tripsGrid.classList.add("hidden");
+      return;
+    }
+
+    if (elements.tripsEmptyState) elements.tripsEmptyState.classList.add("hidden");
+    elements.tripsGrid.classList.remove("hidden");
+
+    trips.forEach((trip) => {
+      const card = document.createElement("div");
+      card.className = "trip-card";
+      card.dataset.tripId = trip.trip_id;
+
+      const coverId = trip.cover_photo ? trip.cover_photo.id : (trip.photo_ids && trip.photo_ids[0]);
+      const coverUrl = coverId ? `/api/thumbnails/${coverId}` : "";
+
+      // Sample preview thumbnails
+      let sampleThumbsHtml = "";
+      if (trip.sample_photo_ids && trip.sample_photo_ids.length > 0) {
+        sampleThumbsHtml = `
+          <div class="trip-sample-strip">
+            ${trip.sample_photo_ids.map(pid => `<img class="trip-sample-thumb" src="/api/thumbnails/${pid}" loading="lazy" alt="Preview" />`).join("")}
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="trip-cover-wrap">
+          <img class="trip-cover-img" src="${coverUrl}" alt="${escapeHtml(trip.title)}" loading="lazy" onerror="if(this.src.indexOf('/api/media/')===-1) this.src='/api/media/${coverId}'" />
+          <div class="trip-gradient-overlay"></div>
+          <span class="trip-duration-badge">⏱️ ${trip.duration_label}</span>
+          <span class="trip-count-badge">📷 ${trip.photo_count} Foto</span>
+        </div>
+        <div class="trip-info">
+          <h3 class="trip-title">${escapeHtml(trip.title)}</h3>
+          <div class="trip-meta">
+            <span class="trip-location">📍 ${escapeHtml(trip.location_label || trip.city)}</span>
+            <span class="trip-dates">🗓️ ${escapeHtml(trip.date_label)}</span>
+          </div>
+          ${sampleThumbsHtml}
+        </div>
+      `;
+
+      card.addEventListener("click", () => {
+        openTripInTimeline(trip);
+      });
+
+      elements.tripsGrid.appendChild(card);
+    });
+  }
+
+  function openTripInTimeline(trip) {
+    if (!trip || !trip.photo_ids) return;
+    hideTripsView();
+    state.tripFilter = trip;
+    state.currentCategory = "all";
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    fetchPhotos(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    showToast(`Membuka ${trip.title} (${trip.photo_count} foto)`);
+  }
+
+  function showTripsView() {
+    state.activeView = "trips";
+    if (elements.timelineContainer) elements.timelineContainer.classList.add("hidden");
+    if (elements.timelineScrubber) elements.timelineScrubber.classList.add("hidden");
+    if (elements.memoriesSection) elements.memoriesSection.classList.add("hidden");
+    if (elements.tripsContainer) elements.tripsContainer.classList.remove("hidden");
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    if (elements.tripsChip) elements.tripsChip.classList.add("active");
+    loadSmartTrips();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function hideTripsView() {
+    if (elements.tripsContainer) elements.tripsContainer.classList.add("hidden");
+    if (elements.timelineContainer) elements.timelineContainer.classList.remove("hidden");
+    if (elements.timelineScrubber) elements.timelineScrubber.classList.remove("hidden");
+    state.activeView = "timeline";
+  }
+
+  function initSmartTrips() {
+    if (elements.tripsChip) {
+      elements.tripsChip.addEventListener("click", () => {
+        exitSecondaryViews();
+        showTripsView();
+      });
+    }
+
+    if (elements.tripsBackBtn) {
+      elements.tripsBackBtn.addEventListener("click", () => {
+        hideTripsView();
+        state.currentCategory = "all";
+        state.tripFilter = null;
+        document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+        const allChip = document.querySelector('[data-category="all"]');
+        if (allChip) allChip.classList.add("active");
+        fetchPhotos(true);
+      });
+    }
+
+    loadSmartTrips();
+  }
+
+  // --------------------------------------------------------------------------
+  // Photo Collage Maker Controller (Phase 11)
+  // --------------------------------------------------------------------------
+  let collagePhotos = [];
+  let collageActiveLayout = "split-v";
+  let collageGap = 0;
+  let collageRadius = 0;
+  let collageBgColor = "#121212";
+
+  function initPhotoCollage() {
+    if (elements.createCollageBtn) {
+      elements.createCollageBtn.addEventListener("click", openCollageModal);
+    }
+
+    if (elements.collageModalCloseBtn) {
+      elements.collageModalCloseBtn.addEventListener("click", closeCollageModal);
+    }
+    if (elements.collageCancelBtn) {
+      elements.collageCancelBtn.addEventListener("click", closeCollageModal);
+    }
+    if (elements.collageModalBackdrop) {
+      elements.collageModalBackdrop.addEventListener("click", closeCollageModal);
+    }
+
+    // Gap buttons
+    const gapBtns = [
+      { btn: elements.collageGap0Btn, val: 0 },
+      { btn: elements.collageGap12Btn, val: 12 },
+      { btn: elements.collageGap24Btn, val: 24 },
+    ];
+    gapBtns.forEach(({ btn, val }) => {
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        gapBtns.forEach(g => g.btn && g.btn.classList.remove("active"));
+        btn.classList.add("active");
+        collageGap = val;
+        renderCollageCanvas();
+      });
+    });
+
+    // Radius buttons
+    const radiusBtns = [
+      { btn: elements.collageRadius0Btn, val: 0 },
+      { btn: elements.collageRadius16Btn, val: 16 },
+      { btn: elements.collageRadius28Btn, val: 28 },
+    ];
+    radiusBtns.forEach(({ btn, val }) => {
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        radiusBtns.forEach(r => r.btn && r.btn.classList.remove("active"));
+        btn.classList.add("active");
+        collageRadius = val;
+        renderCollageCanvas();
+      });
+    });
+
+    // Swatches
+    const swatchBtns = [
+      { btn: elements.collageColorDarkBtn, color: "#121212" },
+      { btn: elements.collageColorLightBtn, color: "#FFFFFF" },
+      { btn: elements.collageColorBeigeBtn, color: "#F5F0EB" },
+    ];
+    swatchBtns.forEach(({ btn, color }) => {
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        swatchBtns.forEach(s => s.btn && s.btn.classList.remove("active"));
+        btn.classList.add("active");
+        collageBgColor = color;
+        renderCollageCanvas();
+      });
+    });
+
+    // Download JPG
+    if (elements.collageDownloadBtn) {
+      elements.collageDownloadBtn.addEventListener("click", downloadCollageImage);
+    }
+
+    // Save to Archive
+    if (elements.collageSaveArchiveBtn) {
+      elements.collageSaveArchiveBtn.addEventListener("click", saveCollageToArchive);
+    }
+  }
+
+  function openCollageModal() {
+    if (state.selectedPhotos.size < 2) {
+      showToast("Pilih minimal 2 foto untuk membuat kolase.");
+      return;
+    }
+    if (state.selectedPhotos.size > 6) {
+      showToast("Maksimal 6 foto sekaligus untuk kolase.");
+      return;
+    }
+
+    const selectedIds = Array.from(state.selectedPhotos);
+    collagePhotos = selectedIds.map(id => state.photos.find(p => p.id === id)).filter(Boolean);
+
+    if (collagePhotos.length < 2) {
+      showToast("Foto yang dipilih belum dimuat lengkap.");
+      return;
+    }
+
+    if (elements.collageSubtitle) {
+      elements.collageSubtitle.textContent = `Menggabungkan ${collagePhotos.length} foto pilihan`;
+    }
+
+    // Populate layout buttons for this photo count
+    setupCollageLayoutChips(collagePhotos.length);
+
+    if (elements.collageModalWrapper) {
+      elements.collageModalWrapper.classList.remove("hidden");
+    }
+
+    renderCollageCanvas();
+  }
+
+  function closeCollageModal() {
+    if (elements.collageModalWrapper) {
+      elements.collageModalWrapper.classList.add("hidden");
+    }
+  }
+
+  function setupCollageLayoutChips(count) {
+    if (!elements.collageLayoutsRow) return;
+    elements.collageLayoutsRow.innerHTML = "";
+
+    const layoutsByCount = {
+      2: [
+        { id: "split-v", label: "Dua Kolom (Vertikal)" },
+        { id: "split-h", label: "Atas & Bawah (Horisontal)" },
+      ],
+      3: [
+        { id: "featured-left", label: "1 Besar Kiri + 2 Kanan" },
+        { id: "triptych-v", label: "3 Kolom Sejajar" },
+      ],
+      4: [
+        { id: "grid-2x2", label: "Grid Simetris (2x2)" },
+        { id: "featured-top", label: "1 Lebar Atas + 3 Bawah" },
+      ],
+      5: [
+        { id: "grid-2-3", label: "2 Atas + 3 Bawah" },
+      ],
+      6: [
+        { id: "grid-3x2", label: "Grid Seimbang (3x2)" },
+      ],
+    };
+
+    const available = layoutsByCount[count] || [{ id: "grid-auto", label: "Grid Standar" }];
+    collageActiveLayout = available[0].id;
+
+    available.forEach((layout, idx) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = `collage-layout-chip ${idx === 0 ? "active" : ""}`;
+      chip.textContent = layout.label;
+      chip.dataset.layoutId = layout.id;
+
+      chip.addEventListener("click", () => {
+        elements.collageLayoutsRow.querySelectorAll(".collage-layout-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        collageActiveLayout = layout.id;
+        renderCollageCanvas();
+      });
+
+      elements.collageLayoutsRow.appendChild(chip);
+    });
+  }
+
+  async function renderCollageCanvas() {
+    if (!elements.collageCanvas || collagePhotos.length === 0) return;
+    const canvas = elements.collageCanvas;
+    const ctx = canvas.getContext("2d");
+
+    const w = 1200;
+    const h = 1200;
+    canvas.width = w;
+    canvas.height = h;
+
+    // Fill background
+    ctx.fillStyle = collageBgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    const gap = collageGap;
+    const pad = gap;
+    const innerW = w - (pad * 2);
+    const innerH = h - (pad * 2);
+    const count = collagePhotos.length;
+
+    // Compute slots [x, y, sw, sh]
+    let slots = [];
+    if (count === 2) {
+      if (collageActiveLayout === "split-h") {
+        const slotH = (innerH - gap) / 2;
+        slots = [
+          { x: pad, y: pad, w: innerW, h: slotH },
+          { x: pad, y: pad + slotH + gap, w: innerW, h: slotH },
+        ];
+      } else {
+        const slotW = (innerW - gap) / 2;
+        slots = [
+          { x: pad, y: pad, w: slotW, h: innerH },
+          { x: pad + slotW + gap, y: pad, w: slotW, h: innerH },
+        ];
+      }
+    } else if (count === 3) {
+      if (collageActiveLayout === "triptych-v") {
+        const slotW = (innerW - (gap * 2)) / 3;
+        slots = [
+          { x: pad, y: pad, w: slotW, h: innerH },
+          { x: pad + slotW + gap, y: pad, w: slotW, h: innerH },
+          { x: pad + (slotW * 2) + (gap * 2), y: pad, w: slotW, h: innerH },
+        ];
+      } else {
+        const leftW = (innerW - gap) * 0.58;
+        const rightW = innerW - gap - leftW;
+        const rightH = (innerH - gap) / 2;
+        slots = [
+          { x: pad, y: pad, w: leftW, h: innerH },
+          { x: pad + leftW + gap, y: pad, w: rightW, h: rightH },
+          { x: pad + leftW + gap, y: pad + rightH + gap, w: rightW, h: rightH },
+        ];
+      }
+    } else if (count === 4) {
+      if (collageActiveLayout === "featured-top") {
+        const topH = (innerH - gap) * 0.6;
+        const bottomH = innerH - gap - topH;
+        const bottomW = (innerW - (gap * 2)) / 3;
+        slots = [
+          { x: pad, y: pad, w: innerW, h: topH },
+          { x: pad, y: pad + topH + gap, w: bottomW, h: bottomH },
+          { x: pad + bottomW + gap, y: pad + topH + gap, w: bottomW, h: bottomH },
+          { x: pad + (bottomW * 2) + (gap * 2), y: pad + topH + gap, w: bottomW, h: bottomH },
+        ];
+      } else {
+        const halfW = (innerW - gap) / 2;
+        const halfH = (innerH - gap) / 2;
+        slots = [
+          { x: pad, y: pad, w: halfW, h: halfH },
+          { x: pad + halfW + gap, y: pad, w: halfW, h: halfH },
+          { x: pad + halfH + gap, y: pad, w: halfW, h: halfH },
+          { x: pad + halfW + gap, y: pad + halfH + gap, w: halfW, h: halfH },
+        ];
+      }
+    } else if (count === 5) {
+      const topH = (innerH - gap) / 2;
+      const topW = (innerW - gap) / 2;
+      const bottomH = topH;
+      const bottomW = (innerW - (gap * 2)) / 3;
+      slots = [
+        { x: pad, y: pad, w: topW, h: topH },
+        { x: pad + topW + gap, y: pad, w: topW, h: topH },
+        { x: pad, y: pad + topH + gap, w: bottomW, h: bottomH },
+        { x: pad + bottomW + gap, y: pad + topH + gap, w: bottomW, h: bottomH },
+        { x: pad + (bottomW * 2) + (gap * 2), y: pad + topH + gap, w: bottomW, h: bottomH },
+      ];
+    } else if (count >= 6) {
+      const rowH = (innerH - gap) / 2;
+      const colW = (innerW - (gap * 2)) / 3;
+      slots = [
+        { x: pad, y: pad, w: colW, h: rowH },
+        { x: pad + colW + gap, y: pad, w: colW, h: rowH },
+        { x: pad + (colW * 2) + (gap * 2), y: pad, w: colW, h: rowH },
+        { x: pad, y: pad + rowH + gap, w: colW, h: rowH },
+        { x: pad + colW + gap, y: pad + rowH + gap, w: colW, h: rowH },
+        { x: pad + (colW * 2) + (gap * 2), y: pad + rowH + gap, w: colW, h: rowH },
+      ];
+    }
+
+    // Load and render images in parallel
+    const imgPromises = collagePhotos.map((photo) => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = `/api/media/${photo.id}`;
+      });
+    });
+
+    const loadedImgs = await Promise.all(imgPromises);
+
+    loadedImgs.forEach((img, idx) => {
+      if (!img || !slots[idx]) return;
+      const slot = slots[idx];
+      drawRoundedImage(ctx, img, slot.x, slot.y, slot.w, slot.h, collageRadius);
+    });
+  }
+
+  function drawRoundedImage(ctx, img, x, y, w, h, radius) {
+    ctx.save();
+    ctx.beginPath();
+    if (radius > 0) {
+      const r = Math.min(radius, w / 2, h / 2);
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      ctx.clip();
+    }
+
+    const imgRatio = img.naturalWidth / img.naturalHeight;
+    const targetRatio = w / h;
+    let sWidth, sHeight, sx, sy;
+
+    if (imgRatio > targetRatio) {
+      sHeight = img.naturalHeight;
+      sWidth = img.naturalHeight * targetRatio;
+      sx = (img.naturalWidth - sWidth) / 2;
+      sy = 0;
+    } else {
+      sWidth = img.naturalWidth;
+      sHeight = img.naturalWidth / targetRatio;
+      sx = 0;
+      sy = (img.naturalHeight - sHeight) / 2;
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, sx, sy, sWidth, sHeight, x, y, w, h);
+    ctx.restore();
+  }
+
+  function downloadCollageImage() {
+    if (!elements.collageCanvas) return;
+    elements.collageCanvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `kolase_google_photos_${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Kolase foto berhasil diunduh! 🎨");
+    }, "image/jpeg", 0.94);
+  }
+
+  async function saveCollageToArchive() {
+    if (!elements.collageCanvas) return;
+    elements.collageCanvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const filename = `kolase_${Date.now()}.jpg`;
+      const formData = new FormData();
+      formData.append("files", blob, filename);
+
+      try {
+        showToast("Menyimpan kolase ke galeri...");
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast("Kolase berhasil disimpan ke galeri! ✅");
+          closeCollageModal();
+          exitSelectionMode();
+          fetchPhotos(true);
+        } else {
+          throw new Error(data.detail || "Gagal menyimpan kolase");
+        }
+      } catch (e) {
+        showToast(`Gagal menyimpan kolase: ${e.message}`);
+      }
+    }, "image/jpeg", 0.94);
+  }
+
+  // --------------------------------------------------------------------------
+  // Mobile Direct Upload (Kamera & Galeri) Controller (Phase 11)
+  // --------------------------------------------------------------------------
+  function initMobileDirectUpload() {
+    if (elements.openCameraBtn && elements.cameraDirectInput) {
+      elements.openCameraBtn.addEventListener("click", () => {
+        elements.cameraDirectInput.click();
+      });
+      elements.cameraDirectInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFilesUpload(Array.from(e.target.files));
+          e.target.value = "";
+        }
+      });
+    }
+
+    if (elements.openGalleryBtn && elements.galleryDirectInput) {
+      elements.openGalleryBtn.addEventListener("click", () => {
+        elements.galleryDirectInput.click();
+      });
+      elements.galleryDirectInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleFilesUpload(Array.from(e.target.files));
+          e.target.value = "";
+        }
+      });
+    }
   }
 
   // --- Bootstrap ---

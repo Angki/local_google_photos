@@ -34,6 +34,8 @@ from backend.database import (
     get_geo_points,
     get_timeline_hierarchy,
     get_memories_data,
+    get_smart_trips,
+    get_trip_details,
     update_live_photo_status,
     update_photo_location,
     update_thumbnail_path,
@@ -316,6 +318,29 @@ def get_memories(
     return get_memories_data(month=month, day=day, current_year=year)
 
 
+@api_router.get("/api/trips", tags=["Trips"], summary="List Smart Detected Trips")
+def api_get_trips(
+    min_photos: int = Query(3, ge=1, le=50, description="Minimum photos to constitute a trip"),
+    limit: int = Query(60, ge=1, le=200, description="Max number of trips to return"),
+):
+    """
+    Returns smart auto-clustered trips and vacations based on geolocation and date proximity.
+    """
+    trips = get_smart_trips(min_photos=min_photos, limit=limit)
+    return {"trips": trips, "count": len(trips)}
+
+
+@api_router.get("/api/trips/{trip_id}", tags=["Trips"], summary="Get Trip Details")
+def api_get_trip_detail(trip_id: str):
+    """
+    Returns full trip details including full list of photos and route coordinates.
+    """
+    trip = get_trip_details(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail=f"Trip '{trip_id}' tidak ditemukan.")
+    return trip
+
+
 @api_router.get("/api/photos", response_model=PhotoListResponse, tags=["Photos"], summary="List Photos")
 def list_photos(
     year: Optional[int] = Query(None),
@@ -325,10 +350,15 @@ def list_photos(
     has_geo: Optional[bool] = Query(None),
     is_favorite: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
+    ids: Optional[str] = Query(None, description="Comma-separated photo IDs"),
     limit: int = Query(80, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """Returns paginated photos with optional timeline, category, and favorite filters."""
+    """Returns paginated photos with optional timeline, category, trip/ids, and favorite filters."""
+    parsed_ids = None
+    if ids:
+        parsed_ids = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+
     photos = get_photos(
         year=year,
         month=month,
@@ -337,6 +367,7 @@ def list_photos(
         has_geo=has_geo,
         is_favorite=is_favorite,
         search_text=search,
+        photo_ids=parsed_ids,
         limit=limit,
         offset=offset,
     )

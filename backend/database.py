@@ -700,6 +700,145 @@ def get_memories_data(
         }
 
 
+def get_smart_trips(min_photos: int = 3, limit: int = 60) -> List[Dict[str, Any]]:
+    """
+    Intelligently clusters geotagged photos by location (city/state) and date proximity
+    into distinct 'Trips & Adventures' (e.g., 'Liburan di Bandung', 'Trip ke Jakarta').
+    Groups consecutive photos in the same city/region where time gap between photos is <= 4 days.
+    """
+    import datetime
+    with get_db_connection() as conn:
+        rows = conn.execute("""
+            SELECT id, filename, folder_year, media_type, taken_at, taken_year, taken_month, taken_day,
+                   taken_formatted, latitude, longitude, city, state, country, location_label,
+                   thumbnail_path, is_favorite, width, height
+            FROM photos
+            WHERE deleted = 0 AND (is_locked IS NULL OR is_locked = 0)
+              AND city IS NOT NULL AND city != ''
+            ORDER BY taken_at ASC;
+        """).fetchall()
+
+        if not rows:
+            return []
+
+        raw_trips = []
+        current = None
+
+        for r in rows:
+            p = dict(r)
+            t = p["taken_at"]
+            city = p["city"]
+
+            if not current:
+                current = {
+                    "city": city,
+                    "state": p.get("state") or "",
+                    "country": p.get("country") or "",
+                    "location_label": p.get("location_label") or city,
+                    "start_at": t,
+                    "end_at": t,
+                    "photos": [p],
+                }
+            else:
+                gap = t - current["end_at"]
+                if current["city"].lower() == city.lower() and gap <= 4 * 86400:
+                    current["end_at"] = t
+                    current["photos"].append(p)
+                else:
+                    if len(current["photos"]) >= min_photos:
+                        raw_trips.append(current)
+                    current = {
+                        "city": city,
+                        "state": p.get("state") or "",
+                        "country": p.get("country") or "",
+                        "location_label": p.get("location_label") or city,
+                        "start_at": t,
+                        "end_at": t,
+                        "photos": [p],
+                    }
+
+        if current and len(current["photos"]) >= min_photos:
+            raw_trips.append(current)
+
+        raw_trips.sort(key=lambda x: x["start_at"], reverse=True)
+
+        trips = []
+        months_id = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+        for idx, tr in enumerate(raw_trips[:limit]):
+            s_dt = datetime.datetime.fromtimestamp(tr["start_at"])
+            e_dt = datetime.datetime.fromtimestamp(tr["end_at"])
+            duration_days = max(1, (e_dt.date() - s_dt.date()).days + 1)
+
+            if s_dt.year == e_dt.year and s_dt.month == e_dt.month and s_dt.day == e_dt.day:
+                date_label = f"{s_dt.day} {months_id[s_dt.month]} {s_dt.year}"
+            elif s_dt.year == e_dt.year and s_dt.month == e_dt.month:
+                date_label = f"{s_dt.day} - {e_dt.day} {months_id[s_dt.month]} {s_dt.year}"
+            elif s_dt.year == e_dt.year:
+                date_label = f"{s_dt.day} {months_id[s_dt.month]} - {e_dt.day} {months_id[e_dt.month]} {s_dt.year}"
+            else:
+                date_label = f"{s_dt.day} {months_id[s_dt.month]} {s_dt.year} - {e_dt.day} {months_id[e_dt.month]} {s_dt.year}"
+
+            trip_id = f"trip_{tr['city'].lower().replace(' ', '_')}_{s_dt.strftime('%Y%m%d')}_{idx}"
+
+            # Pick best cover photo
+            favs = [p for p in tr["photos"] if p.get("is_favorite")]
+            if favs:
+                cover_photo = favs[0]
+            elif any(p.get("media_type") == "image" for p in tr["photos"]):
+                cover_photo = next(p for p in tr["photos"] if p.get("media_type") == "image")
+            else:
+                cover_photo = tr["photos"][0]
+
+            sample_thumbs = [p["id"] for p in tr["photos"][:4]]
+            lats = [p["latitude"] for p in tr["photos"] if p.get("latitude")]
+            lngs = [p["longitude"] for p in tr["photos"] if p.get("longitude")]
+            center_lat = sum(lats) / len(lats) if lats else None
+            center_lng = sum(lngs) / len(lngs) if lngs else None
+
+            trips.append({
+                "trip_id": trip_id,
+                "title": f"Trip ke {tr['city']}",
+                "city": tr["city"],
+                "state": tr["state"],
+                "country": tr["country"],
+                "location_label": tr["location_label"],
+                "start_at": tr["start_at"],
+                "end_at": tr["end_at"],
+                "date_label": date_label,
+                "duration_days": duration_days,
+                "duration_label": f"{duration_days} Hari" if duration_days > 1 else "1 Hari",
+                "photo_count": len(tr["photos"]),
+                "cover_photo": cover_photo,
+                "sample_photo_ids": sample_thumbs,
+                "center_lat": center_lat,
+                "center_lng": center_lng,
+                "photo_ids": [p["id"] for p in tr["photos"]],
+            })
+
+        return trips
+
+
+def get_trip_details(trip_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches full trip object including all photos by trip_id."""
+    trips = get_smart_trips(limit=250)
+    for tr in trips:
+        if tr["trip_id"] == trip_id:
+            with get_db_connection() as conn:
+                placeholders = ",".join("?" for _ in tr["photo_ids"])
+                rows = conn.execute(f"""
+                    SELECT id, filename, folder_year, media_type, taken_at, taken_year, taken_month, taken_day,
+                           taken_formatted, latitude, longitude, city, state, country, location_label,
+                           thumbnail_path, is_favorite, width, height, is_live_photo
+                    FROM photos
+                    WHERE id IN ({placeholders})
+                    ORDER BY taken_at ASC;
+                """, tr["photo_ids"]).fetchall()
+                tr["photos"] = [dict(r) for r in rows]
+                return tr
+    return None
+
+
 def update_photo_location(
     photo_id: int,
     city: str,

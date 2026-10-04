@@ -5337,4 +5337,380 @@ body.is-selecting .photo-tile .select-overlay,
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
+/* ==============================================================================
+   PHASE 11: SMART TRIPS & ADVENTURES (PERJALANAN & LIBURAN)
+   ============================================================================== */
+.chip-trips {
+  background: rgba(66, 133, 244, 0.08);
+  border-color: rgba(66, 133, 244, 0.3);
+  color: var(--accent-blue);
+}
+
+.chip-trips.active {
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+.trips-intro-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(66, 133, 244, 0.08);
+  border: 1px solid rgba(66, 133, 244, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  margin: 16px 20px 20px 20px;
+}
+
+.trips-intro-banner svg {
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.trips-grid-wrapper {
+  padding: 0 20px 80px 20px;
+}
+
+.trips-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.trip-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+}
+
+.trip-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
+  border-color: var(--accent-blue);
+}
+
+.trip-cover-wrap {
+  position: relative;
+  width: 100%;
+  height: 190px;
+  overflow: hidden;
+  background: #111;
+}
+
+.trip-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.trip-card:hover .trip-cover-img {
+  transform: scale(1.05);
+}
+
+.trip-gradient-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.65) 100%);
+}
+
+.trip-duration-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.trip-count-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(66, 133, 244, 0.85);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.trip-info {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trip-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.trip-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.trip-sample-strip {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.trip-sample-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--bg-hover);
+}
+
+/* Mobile Bottom Nav Center Upload Pill */
+.mobile-nav-upload-pill {
+  position: relative;
+  top: -8px;
+}
+
+.upload-center-wrap {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, var(--accent-blue), #34a853) !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 4px 14px rgba(66, 133, 244, 0.5) !important;
+  transition: transform var(--transition-fast) !important;
+}
+
+.upload-center-wrap:active {
+  transform: scale(0.92);
+}
+
+@media (max-width: 768px) {
+  .hidden-mobile {
+    display: none !important;
+  }
+}
+
+/* Mobile Direct Camera & Gallery Shortcuts */
+.mobile-upload-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.upload-shortcut-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.upload-shortcut-card:hover, .upload-shortcut-card:active {
+  border-color: var(--accent-blue);
+  background: var(--bg-hover);
+  transform: translateY(-2px);
+}
+
+.shortcut-icon-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.camera-circle {
+  background: rgba(234, 67, 53, 0.15);
+  color: #ea4335;
+}
+
+.gallery-circle {
+  background: rgba(66, 133, 244, 0.15);
+  color: var(--accent-blue);
+}
+
+.shortcut-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.shortcut-desc {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+/* ==============================================================================
+   PHASE 11: PHOTO COLLAGE MAKER
+   ============================================================================== */
+.collage-modal-card {
+  max-width: 900px;
+  width: 92vw;
+  max-height: 90vh;
+}
+
+.collage-modal-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  padding: 18px 24px;
+  overflow-y: auto;
+}
+
+.collage-viewport {
+  background: #0a0a0a;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  min-height: 380px;
+}
+
+.collage-canvas {
+  max-width: 100%;
+  max-height: 440px;
+  width: auto;
+  height: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+}
+
+.collage-sidebar-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.collage-control-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collage-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.collage-layout-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.collage-layout-chip {
+  padding: 8px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.collage-layout-chip.active, .collage-layout-chip:hover {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+}
+
+.collage-pill-group {
+  display: flex;
+  gap: 8px;
+}
+
+.collage-pill-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--transition-fast);
+}
+
+.collage-pill-btn.active {
+  background: rgba(66, 133, 244, 0.15);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.collage-swatches-group {
+  display: flex;
+  gap: 10px;
+}
+
+.collage-swatch {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.collage-swatch.active {
+  border-color: var(--accent-blue);
+  transform: scale(1.15);
+  box-shadow: 0 0 10px rgba(66, 133, 244, 0.5);
+}
+
+@media (max-width: 768px) {
+  .collage-modal-body {
+    grid-template-columns: 1fr;
+  }
+  .collage-viewport {
+    min-height: 280px;
+  }
+}
+
 
