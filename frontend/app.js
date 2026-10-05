@@ -1481,8 +1481,10 @@
     if (elements.videoPlayerContainer) elements.videoPlayerContainer.classList.add("hidden");
     clearTimeout(videoInactivityTimer);
     elements.lightboxModal.classList.add("hidden");
+    elements.lightboxVideo.onerror = null;
     elements.lightboxVideo.pause();
-    elements.lightboxVideo.src = "";
+    elements.lightboxVideo.removeAttribute("src");
+    elements.lightboxVideo.load();
     elements.infoSidebar.classList.remove("open");
     document.body.style.overflow = "";
   }
@@ -1543,6 +1545,13 @@
       }
 
       elements.lightboxVideo.onerror = () => {
+        // Strict guards: NEVER trigger on photos, when video is hidden, or when resetting src
+        if (!elements.lightboxVideo || elements.lightboxVideo.classList.contains("hidden")) return;
+        const currentMedia = state.photos[state.lightboxIndex];
+        if (!currentMedia || currentMedia.media_type !== "video") return;
+        const currentSrc = elements.lightboxVideo.currentSrc || elements.lightboxVideo.src;
+        if (!currentSrc || currentSrc === "" || currentSrc === window.location.href) return;
+
         console.warn("Video failed to play in browser (codec incompatibility or network error)");
         showToast("Browser tidak dapat mendecode video ini. Klik tombol layar di kanan atas untuk memutar di aplikasi video laptop.");
       };
@@ -1550,11 +1559,23 @@
       if (elements.lightboxEditBtn) elements.lightboxEditBtn.classList.remove("hidden");
       if (elements.lightboxQuickRotateBtn) elements.lightboxQuickRotateBtn.classList.remove("hidden");
       if (elements.videoPlayerContainer) elements.videoPlayerContainer.classList.add("hidden");
+
+      // Cleanly reset video element and detach onerror before clearing src
+      elements.lightboxVideo.onerror = null;
       elements.lightboxVideo.classList.add("hidden");
       elements.lightboxVideo.pause();
-      elements.lightboxVideo.src = "";
+      elements.lightboxVideo.removeAttribute("src");
+      elements.lightboxVideo.load();
+
       if (elements.lightboxOpenLocalBtn) elements.lightboxOpenLocalBtn.style.display = "none";
       elements.lightboxImg.classList.remove("hidden");
+
+      // Auto-fallback: If media stream fails to render, gracefully fallback to high-res thumbnail
+      elements.lightboxImg.onerror = () => {
+        console.warn(`Lightbox image failed to render for photo ${photo.id}, falling back to thumbnail`);
+        elements.lightboxImg.onerror = null;
+        elements.lightboxImg.src = `/api/thumbnails/${photo.id}`;
+      };
       elements.lightboxImg.src = `/api/media/${photo.id}`;
 
       // Ken Burns Cinematic Animation during Slideshow
@@ -3167,8 +3188,10 @@
     }
     const currentPhoto = state.photos[state.lightboxIndex];
     if (currentPhoto && currentPhoto.media_type !== "video") {
+      elements.lightboxVideo.onerror = null;
       elements.lightboxVideo.pause();
-      elements.lightboxVideo.src = "";
+      elements.lightboxVideo.removeAttribute("src");
+      elements.lightboxVideo.load();
       elements.lightboxVideo.classList.add("hidden");
       elements.lightboxImg.classList.remove("hidden");
     }

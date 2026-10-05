@@ -6,6 +6,7 @@
 # ==============================================================================
 
 import asyncio
+import hashlib
 import json
 import logging
 import mimetypes
@@ -15,9 +16,16 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
+from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
+
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
 
 logger = logging.getLogger("APIRoutes")
 
@@ -534,6 +542,31 @@ def api_get_video_thumbnails_status():
     return {"running": _video_batch_running}
 
 
+def get_or_create_heic_preview(photo_id: int, file_path: Path) -> Optional[Path]:
+    """
+    Transcodes full-resolution HEIC/HEIF images to high-quality JPEG for browser viewing.
+    Browsers on Windows (Chrome, Edge, Firefox) cannot decode raw HEIC images in <img> tags.
+    Caches the converted JPEG in THUMBNAILS_DIR for instant subsequent responses.
+    """
+    try:
+        path_hash = hashlib.md5(str(file_path).encode("utf-8")).hexdigest()[:12]
+        preview_path = THUMBNAILS_DIR / f"heic_view_{photo_id}_{path_hash}.jpg"
+        if preview_path.is_file() and preview_path.stat().st_size > 0:
+            return preview_path
+
+        with Image.open(file_path) as im:
+            im = ImageOps.exif_transpose(im)
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            temp_path = THUMBNAILS_DIR / f"temp_heic_{photo_id}_{path_hash}.jpg"
+            im.save(temp_path, format="JPEG", quality=92, optimize=True)
+            temp_path.replace(preview_path)
+            return preview_path
+    except Exception as e:
+        logger.warning(f"HEIC on-the-fly transcode failed for photo {photo_id} ({file_path.name}): {e}")
+        return None
+
+
 @api_router.get("/api/media/{photo_id}", tags=["Media"], summary="Stream Media File")
 async def get_media(photo_id: int, request: Request, download: bool = False):
     """
@@ -568,10 +601,27 @@ async def get_media(photo_id: int, request: Request, download: bool = False):
         mime_type = "image/webp"
     elif ext in [".gif"]:
         mime_type = "image/gif"
+    elif ext in [".heic", ".heif"]:
+        mime_type = "image/heic"
     else:
         mime_type, _ = mimetypes.guess_type(str(file_path))
         if not mime_type:
             mime_type = "video/mp4" if photo.get("media_type") == "video" else "image/jpeg"
+
+    # For non-download requests (browser viewing in Lightbox / <img> tags),
+    # transcode HEIC/HEIF files to high-quality JPEG on-the-fly with caching,
+    # because Chromium/Firefox/Edge on Windows cannot decode raw HEIC in <img>.
+    if not download and (ext in [".heic", ".heif"] or mime_type == "image/heic" or photo.get("mime_type") == "image/heic"):
+        preview_path = get_or_create_heic_preview(photo_id, file_path)
+        if preview_path and preview_path.is_file():
+            return FileResponse(
+                preview_path,
+                media_type="image/jpeg",
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "public, max-age=86400",
+                },
+            )
 
     file_size = file_path.stat().st_size
     range_header = request.headers.get("Range")
