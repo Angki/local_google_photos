@@ -783,9 +783,17 @@
   function handleStatusUpdate(status) {
     if (status.event === "photo_added" || status.type === "photo_added") {
       const photoId = status.photo_id || (status.photo && status.photo.id);
-      if (photoId && state.photos.some((p) => p.id === photoId)) {
-        return; // Already present in current gallery, skip duplicate toast
+
+      // Never show photo_added toast if user is actively in Lightbox (viewing photo or video)
+      if (elements.lightboxModal && !elements.lightboxModal.classList.contains("hidden")) {
+        return;
       }
+
+      // If photo is already present in current gallery, skip duplicate toast
+      if (photoId && state.photos.some((p) => p.id === photoId)) {
+        return;
+      }
+
       const name = status.filename || (status.photo && status.photo.filename) || "Foto baru";
       showToast(`Foto baru ditambahkan: ${name} ✨`, null, null, 3500);
       loadTimelineHierarchy();

@@ -7,6 +7,7 @@
 # ==============================================================================
 
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -52,27 +53,47 @@ class MediaWatcherHandler(FileSystemEventHandler):
             self._handle_media_change(Path(event.src_path))
 
     def on_modified(self, event):
-        if event.is_directory:
-            return
-        if self._should_process(event.src_path):
-            self._handle_media_change(Path(event.src_path))
+        # On Windows, reading/streaming video or image files updates file access times
+        # and triggers FileModifiedEvent. We strictly ignore modified events so that
+        # viewing photos or videos NEVER triggers a false "foto baru ditambahkan" popup.
+        return
 
     def _handle_media_change(self, file_path: Path):
         # Allow brief time for file copy to finish writing
         time.sleep(0.5)
         try:
-            if not file_path.is_file() or file_path.stat().st_size == 0:
+            if not file_path.is_file():
                 return
 
-            resolved_path_str = str(file_path.resolve())
+            # Wait briefly if file is still being copied (size is 0)
+            for _ in range(4):
+                if file_path.stat().st_size > 0:
+                    break
+                time.sleep(0.5)
+            else:
+                return
+
+            norm_path = os.path.normpath(str(file_path.resolve()))
+            norm_rel = os.path.normpath(str(file_path))
             with get_db_connection() as conn:
                 existing = conn.execute(
-                    "SELECT id FROM photos WHERE file_path = ?", (resolved_path_str,)
+                    """
+                    SELECT id FROM photos 
+                    WHERE file_path = ? COLLATE NOCASE 
+                       OR file_path = ? COLLATE NOCASE 
+                       OR file_path = ? COLLATE NOCASE 
+                       OR file_path = ? COLLATE NOCASE
+                    LIMIT 1
+                    """,
+                    (norm_path, norm_rel, norm_path.replace("\\", "/"), norm_rel.replace("\\", "/")),
                 ).fetchone()
 
-            is_truly_new = existing is None
+            # If file already exists in library, do not re-index or broadcast as new media
+            if existing is not None:
+                return
+
             photo_id = index_single_media_file(file_path)
-            if photo_id and is_truly_new:
+            if photo_id:
                 logger.info(f"Auto-indexed new photo (ID: {photo_id}): {file_path.name}")
                 if self.on_new_media_callback:
                     self.on_new_media_callback(photo_id, file_path)
