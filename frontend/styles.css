@@ -3865,7 +3865,7 @@ body.is-selecting .photo-tile .select-overlay,
 .mobile-grid-fab {
   position: fixed;
   bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  right: 20px;
+  right: 88px;
   z-index: 45;
   display: flex;
   align-items: center;
@@ -4383,8 +4383,8 @@ body.is-selecting .photo-tile .select-overlay,
   }
 
   .mobile-grid-fab {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    right: 10px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 12px !important;
     transform: scale(0.92);
     transform-origin: bottom right;
   }
@@ -5111,9 +5111,8 @@ body.is-selecting .photo-tile .select-overlay,
    ============================================================================== */
 .scroll-to-top-btn {
   position: fixed;
-  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: calc(126px + env(safe-area-inset-bottom, 0px));
+  right: 14px;
   z-index: 45;
   display: flex;
   align-items: center;
@@ -5131,25 +5130,33 @@ body.is-selecting .photo-tile .select-overlay,
   animation: fadeIn 0.2s ease-out;
 }
 
+[data-theme="light"] .scroll-to-top-btn {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
 .scroll-to-top-btn:hover {
   background: var(--bg-surface-hover);
   border-color: var(--google-blue);
-  transform: translateX(-50%) translateY(-2px);
+  transform: translateY(-2px);
 }
 
 .scroll-to-top-btn:active {
-  transform: translateX(-50%) scale(0.95);
+  transform: scale(0.95);
 }
 
 @media (min-width: 769px) {
   .scroll-to-top-btn {
-    bottom: 24px;
+    bottom: 78px;
     left: auto;
-    right: 24px;
+    right: 88px;
     transform: none;
   }
   .scroll-to-top-btn:hover {
     transform: translateY(-2px);
+  }
+  .scroll-to-top-btn:active {
+    transform: scale(0.95);
   }
 }
 

@@ -4012,6 +4012,8 @@
     elements.duplicatesContainer.classList.add("hidden");
     elements.filterBanner.classList.add("hidden");
     elements.mapContainer.classList.remove("hidden");
+    if (elements.mobileGridFab) elements.mobileGridFab.classList.add("hidden");
+    if (elements.scrollToTopBtn) elements.scrollToTopBtn.classList.add("hidden");
 
     document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
     if (elements.mapChip) elements.mapChip.classList.add("active");
@@ -4044,6 +4046,7 @@
 
   function hidePhotoMapView() {
     elements.mapContainer.classList.add("hidden");
+    if (elements.mobileGridFab) elements.mobileGridFab.classList.remove("hidden");
   }
 
   function updateMapTrayPhotos() {
