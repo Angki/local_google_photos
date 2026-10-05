@@ -351,6 +351,8 @@ def list_photos(
     is_favorite: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Comma-separated photo IDs"),
+    sort_order: str = Query("desc", regex="^(asc|desc|ASC|DESC)$", description="Sort order: desc (newest first) or asc (oldest first)"),
+    aspect_ratio: Optional[str] = Query(None, regex="^(landscape|portrait|square)$", description="Aspect ratio filter: landscape, portrait, square"),
     limit: int = Query(80, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -368,6 +370,8 @@ def list_photos(
         is_favorite=is_favorite,
         search_text=search,
         photo_ids=parsed_ids,
+        sort_order=sort_order,
+        aspect_ratio=aspect_ratio,
         limit=limit,
         offset=offset,
     )
@@ -472,29 +476,33 @@ def get_thumbnail(photo_id: int, force: bool = Query(False)):
         raise HTTPException(status_code=404, detail="Photo not found")
 
     thumb_path = photo.get("thumbnail_path")
-    if not force and thumb_path and Path(thumb_path).is_file():
-        return FileResponse(
-            thumb_path,
-            media_type="image/webp",
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
-        )
+    if not force and thumb_path:
+        resolved_thumb = Path(thumb_path).resolve()
+        if resolved_thumb.is_file():
+            return FileResponse(
+                str(resolved_thumb),
+                media_type="image/webp",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
 
     # On-demand generation fallback
     file_path = photo["file_path"]
     media_type = photo.get("media_type", "image")
     thumb_rel, w, h = generate_thumbnail(photo_id, file_path, media_type, force=force)
-    if thumb_rel and Path(thumb_rel).is_file():
-        update_thumbnail_path(photo_id, thumb_rel, width=w, height=h)
-        return FileResponse(
-            thumb_rel,
-            media_type="image/webp",
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
-        )
+    if thumb_rel:
+        resolved_rel = Path(thumb_rel).resolve()
+        if resolved_rel.is_file():
+            update_thumbnail_path(photo_id, thumb_rel, width=w, height=h)
+            return FileResponse(
+                str(resolved_rel),
+                media_type="image/webp",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
 
     # Fallback to serving original image directly if thumbnail generation failed
     if Path(file_path).is_file() and media_type == "image":
         mime = photo.get("mime_type") or "image/jpeg"
-        return FileResponse(file_path, media_type=mime)
+        return FileResponse(str(Path(file_path).resolve()), media_type=mime)
 
     raise HTTPException(status_code=404, detail="Thumbnail not available")
 

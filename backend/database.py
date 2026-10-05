@@ -361,6 +361,8 @@ def get_photos(
     photo_ids: Optional[List[int]] = None,
     album_id: Optional[int] = None,
     is_locked: Optional[bool] = None,
+    sort_order: str = "desc",
+    aspect_ratio: Optional[str] = None,
     limit: int = 80,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -409,13 +411,23 @@ def get_photos(
         conditions.append("is_favorite = ?")
         params.append(1 if is_favorite else 0)
 
+    if aspect_ratio:
+        ar = aspect_ratio.strip().lower()
+        if ar == "landscape":
+            conditions.append("width > height AND width > 0 AND height > 0")
+        elif ar == "portrait":
+            conditions.append("height > width AND width > 0 AND height > 0")
+        elif ar == "square":
+            conditions.append("width = height AND width > 0")
+
     if search_text:
         term = f"%{search_text.strip()}%"
         conditions.append("(filename LIKE ? OR description LIKE ? OR people LIKE ? OR ai_tags LIKE ? OR ai_category LIKE ? OR city LIKE ? OR state LIKE ? OR country LIKE ? OR location_label LIKE ? OR ocr_text LIKE ?)")
         params.extend([term, term, term, term, term, term, term, term, term, term])
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    order_clause = "ORDER BY taken_at DESC, id DESC"
+    direction = "ASC" if str(sort_order).strip().upper() == "ASC" else "DESC"
+    order_clause = f"ORDER BY taken_at {direction}, id {direction}"
 
     query = f"""
         SELECT id, file_path, filename, folder_year, file_size, media_type,

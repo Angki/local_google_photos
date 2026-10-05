@@ -258,6 +258,15 @@ CHANGELOG:
         </svg>
         <span>Kolase</span>
       </button>
+      <button class="action-btn hidden" id="comparePhotosBtn" title="Bandingkan 2 Foto Berdampingan (Pilih tepat 2 foto)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="8" height="18" rx="1"></rect>
+          <rect x="13" y="3" width="8" height="18" rx="1"></rect>
+          <line x1="8.5" y1="9" x2="8.5" y2="15"></line>
+          <line x1="15.5" y1="9" x2="15.5" y2="15"></line>
+        </svg>
+        <span>Bandingkan</span>
+      </button>
       <button class="action-btn" id="addToAlbumBtn" title="Add to Album">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14"/>
@@ -345,6 +354,16 @@ CHANGELOG:
       </button>
       <button class="chip chip-storage" data-category="storage" id="storageChip" title="Analitik Kapasitas & File Terbesar">
         📊 Penyimpanan
+      </button>
+      <button class="chip chip-sort" id="sortOrderToggleBtn" title="Urutan Linimasa: Terbaru ke Terlama / Terlama ke Terbaru">
+        <span id="sortOrderIcon">↓</span>
+        <span id="sortOrderLabel">Terbaru</span>
+      </button>
+      <button class="chip chip-aspect" data-aspect="landscape" id="aspectLandscapeChip" title="Filter Foto Horisontal / Lanskap">
+        🖼️ Lanskap
+      </button>
+      <button class="chip chip-aspect" data-aspect="portrait" id="aspectPortraitChip" title="Filter Foto Vertikal / Potret">
+        📱 Potret
       </button>
     </div>
   </nav>
@@ -736,6 +755,11 @@ CHANGELOG:
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
           </svg>
         </button>
+        <button class="lightbox-btn" id="lightboxQuickRotateBtn" title="Putar Cepat 90° Searah Jarum Jam (r)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+        </button>
         <button class="lightbox-btn" id="lightboxFavoriteBtn" title="Favorit (f)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
@@ -837,6 +861,11 @@ CHANGELOG:
 
       <div class="media-display" id="mediaDisplay">
         <img src="" alt="" id="lightboxImg" class="lightbox-content">
+        <!-- Floating Zoom Level Badge -->
+        <div class="lightbox-zoom-badge hidden" id="lightboxZoomBadge">
+          <span id="lightboxZoomLevelText">100%</span>
+          <button type="button" class="zoom-reset-btn" id="lightboxZoomResetBtn" title="Reset Zoom (1x)">Reset</button>
+        </div>
         <div class="video-player-container hidden" id="videoPlayerContainer">
           <video autoplay loop playsinline preload="auto" id="lightboxVideo" class="lightbox-content video-elem"></video>
 
@@ -2098,6 +2127,115 @@ CHANGELOG:
         <button class="btn btn-secondary" id="collageCancelBtn">Batal</button>
         <button class="btn btn-outline" id="collageDownloadBtn">📥 Unduh JPG</button>
         <button class="btn btn-primary" id="collageSaveArchiveBtn">💾 Simpan ke Galeri</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side-by-Side Photo Comparison Modal (Phase 12) -->
+  <div class="sync-modal-wrapper hidden" id="compareModalWrapper" role="dialog" aria-modal="true">
+    <div class="sync-modal-backdrop" id="compareModalBackdrop"></div>
+    <div class="sync-modal-card compare-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="modal-icon-circle" style="background: rgba(59, 130, 246, 0.15); color: #3B82F6;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="8" height="18" rx="1"></rect>
+              <rect x="13" y="3" width="8" height="18" rx="1"></rect>
+              <line x1="8.5" y1="9" x2="8.5" y2="15"></line>
+              <line x1="15.5" y1="9" x2="15.5" y2="15"></line>
+            </svg>
+          </div>
+          <div>
+            <h3>⚖️ Bandingkan 2 Foto</h3>
+            <span class="sync-stage-text">Geser pembatas tengah untuk membandingkan detail foto</span>
+          </div>
+        </div>
+        <div class="compare-header-actions">
+          <div class="compare-mode-toggle" id="compareModeToggle">
+            <button type="button" class="compare-mode-btn active" id="compareSplitModeBtn" title="Mode Pembatas Geser (Split Slider)">Slider</button>
+            <button type="button" class="compare-mode-btn" id="compareSideModeBtn" title="Mode Berdampingan (Side by Side)">Berdampingan</button>
+          </div>
+          <button class="icon-btn" id="closeCompareModalBtn" title="Tutup (Esc)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="compare-modal-body">
+        <!-- Interactive Split-Slider Viewport -->
+        <div class="compare-viewport" id="compareViewport">
+          <div class="compare-split-container" id="compareSplitContainer">
+            <!-- Background Image: Photo B -->
+            <div class="compare-layer compare-layer-b" id="compareLayerB">
+              <img id="compareImgB" src="" alt="Foto B">
+              <div class="compare-badge compare-badge-b" id="compareBadgeB">Foto 2</div>
+            </div>
+            <!-- Foreground Image: Photo A (Clipped) -->
+            <div class="compare-layer compare-layer-a" id="compareLayerA">
+              <img id="compareImgA" src="" alt="Foto A">
+              <div class="compare-badge compare-badge-a" id="compareBadgeA">Foto 1</div>
+            </div>
+            <!-- Draggable Divider Bar -->
+            <div class="compare-divider" id="compareDivider">
+              <div class="compare-handle" id="compareHandle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- Side-by-Side View (Alternative mode) -->
+          <div class="compare-side-container hidden" id="compareSideContainer">
+            <div class="compare-side-item" id="compareSideItemA">
+              <div class="compare-side-img-wrap">
+                <img id="compareSideImgA" src="" alt="Foto A">
+              </div>
+              <div class="compare-side-meta" id="compareSideMetaA">
+                <strong id="compareMetaNameA">Foto 1</strong>
+                <span id="compareMetaInfoA">--</span>
+              </div>
+            </div>
+            <div class="compare-side-item" id="compareSideItemB">
+              <div class="compare-side-img-wrap">
+                <img id="compareSideImgB" src="" alt="Foto B">
+              </div>
+              <div class="compare-side-meta" id="compareSideMetaB">
+                <strong id="compareMetaNameB">Foto 2</strong>
+                <span id="compareMetaInfoB">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="compare-modal-footer">
+        <div class="compare-meta-strip">
+          <div class="meta-strip-item" id="metaStripA">
+            <span class="meta-strip-label">Foto 1:</span>
+            <span class="meta-strip-val" id="metaStripValA">Memuat...</span>
+          </div>
+          <div class="meta-strip-divider">|</div>
+          <div class="meta-strip-item" id="metaStripB">
+            <span class="meta-strip-label">Foto 2:</span>
+            <span class="meta-strip-val" id="metaStripValB">Memuat...</span>
+          </div>
+        </div>
+        <div class="compare-actions-row">
+          <button type="button" class="action-btn" id="compareKeepABtn">
+            ⭐ Pilih Foto 1
+          </button>
+          <button type="button" class="action-btn" id="compareKeepBBtn">
+            ⭐ Pilih Foto 2
+          </button>
+          <button type="button" class="btn-cancel" id="compareCloseFooterBtn">
+            Tutup
+          </button>
+        </div>
       </div>
     </div>
   </div>

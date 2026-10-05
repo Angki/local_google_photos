@@ -50,6 +50,15 @@
     lockedPinInput: "",
     isPinSetupMode: false,
     pinSetupFirstPass: "",
+    sortOrder: "desc",
+    aspectRatio: null,
+    zoomLevel: 1,
+    panX: 0,
+    panY: 0,
+    photoRotation: 0,
+    isPanning: false,
+    compareMode: "split",
+    comparePhotos: [],
   };
 
   // DOM Elements
@@ -478,6 +487,51 @@
     metadataMapPicker: document.getElementById("metadataMapPicker"),
     cancelMetadataBtn: document.getElementById("cancelMetadataBtn"),
     saveMetadataBtn: document.getElementById("saveMetadataBtn"),
+    // Phase 12: Lightbox Zoom & Pan, Quick Rotate, Comparison Slider & Sort/Aspect
+    comparePhotosBtn: document.getElementById("comparePhotosBtn"),
+    sortOrderToggleBtn: document.getElementById("sortOrderToggleBtn"),
+    sortOrderIcon: document.getElementById("sortOrderIcon"),
+    sortOrderLabel: document.getElementById("sortOrderLabel"),
+    aspectLandscapeChip: document.getElementById("aspectLandscapeChip"),
+    aspectPortraitChip: document.getElementById("aspectPortraitChip"),
+    lightboxQuickRotateBtn: document.getElementById("lightboxQuickRotateBtn"),
+    lightboxZoomBadge: document.getElementById("lightboxZoomBadge"),
+    lightboxZoomLevelText: document.getElementById("lightboxZoomLevelText"),
+    lightboxZoomResetBtn: document.getElementById("lightboxZoomResetBtn"),
+    compareModalWrapper: document.getElementById("compareModalWrapper"),
+    compareModalBackdrop: document.getElementById("compareModalBackdrop"),
+    compareModeToggle: document.getElementById("compareModeToggle"),
+    compareSplitModeBtn: document.getElementById("compareSplitModeBtn"),
+    compareSideModeBtn: document.getElementById("compareSideModeBtn"),
+    closeCompareModalBtn: document.getElementById("closeCompareModalBtn"),
+    compareViewport: document.getElementById("compareViewport"),
+    compareSplitContainer: document.getElementById("compareSplitContainer"),
+    compareLayerB: document.getElementById("compareLayerB"),
+    compareImgB: document.getElementById("compareImgB"),
+    compareBadgeB: document.getElementById("compareBadgeB"),
+    compareLayerA: document.getElementById("compareLayerA"),
+    compareImgA: document.getElementById("compareImgA"),
+    compareBadgeA: document.getElementById("compareBadgeA"),
+    compareDivider: document.getElementById("compareDivider"),
+    compareHandle: document.getElementById("compareHandle"),
+    compareSideContainer: document.getElementById("compareSideContainer"),
+    compareSideItemA: document.getElementById("compareSideItemA"),
+    compareSideImgA: document.getElementById("compareSideImgA"),
+    compareSideMetaA: document.getElementById("compareSideMetaA"),
+    compareMetaNameA: document.getElementById("compareMetaNameA"),
+    compareMetaInfoA: document.getElementById("compareMetaInfoA"),
+    compareSideItemB: document.getElementById("compareSideItemB"),
+    compareSideImgB: document.getElementById("compareSideImgB"),
+    compareSideMetaB: document.getElementById("compareSideMetaB"),
+    compareMetaNameB: document.getElementById("compareMetaNameB"),
+    compareMetaInfoB: document.getElementById("compareMetaInfoB"),
+    metaStripA: document.getElementById("metaStripA"),
+    metaStripValA: document.getElementById("metaStripValA"),
+    metaStripB: document.getElementById("metaStripB"),
+    metaStripValB: document.getElementById("metaStripValB"),
+    compareKeepABtn: document.getElementById("compareKeepABtn"),
+    compareKeepBBtn: document.getElementById("compareKeepBBtn"),
+    compareCloseFooterBtn: document.getElementById("compareCloseFooterBtn"),
   };
 
   // --------------------------------------------------------------------------
@@ -503,6 +557,10 @@
     initPhotoCollage();
     initMobileDirectUpload();
     initCustomVideoPlayer();
+    initPhotoZoomPan();
+    initLightboxQuickRotate();
+    initPhotoComparison();
+    initSortAndAspectFilters();
     fetchPhotos(true);
   }
 
@@ -1058,6 +1116,12 @@
           limit: state.limit,
           offset: state.offset,
         });
+        if (state.sortOrder) {
+          params.append("sort_order", state.sortOrder);
+        }
+        if (state.aspectRatio) {
+          params.append("aspect_ratio", state.aspectRatio);
+        }
         if (state.currentYear) {
           params.append("year", state.currentYear);
         }
@@ -1097,6 +1161,9 @@
         } else if (state.currentYear) {
           elements.filterBanner.classList.remove("hidden");
           elements.filterDesc.textContent = `Showing photos from ${state.currentYear}`;
+        } else if (state.aspectRatio) {
+          elements.filterBanner.classList.remove("hidden");
+          elements.filterDesc.textContent = `Showing ${state.aspectRatio === "landscape" ? "🖼️ LANSKAP (Horizontal)" : "📱 POTRET (Vertical)"} photos`;
         } else {
           elements.filterBanner.classList.add("hidden");
         }
@@ -1398,6 +1465,8 @@
   function closeLightbox() {
     stopSlideshow();
     stopLivePhotoPlayback();
+    resetPhotoZoom();
+    state.photoRotation = 0;
     isLightboxImmersion = false;
     if (elements.lightboxHeader) elements.lightboxHeader.classList.remove("ui-hidden");
     if (elements.lightboxActions) elements.lightboxActions.classList.remove("ui-hidden");
@@ -1413,6 +1482,8 @@
   function navigateLightbox(step) {
     const newIdx = state.lightboxIndex + step;
     if (newIdx >= 0 && newIdx < state.photos.length) {
+      resetPhotoZoom();
+      state.photoRotation = 0;
       state.lightboxIndex = newIdx;
       renderLightboxPhoto();
     }
@@ -1423,6 +1494,8 @@
     if (!photo) return;
 
     stopLivePhotoPlayback();
+    resetPhotoZoom();
+    state.photoRotation = 0;
 
     elements.lightboxDate.textContent = photo.taken_formatted || "Unknown Date";
     elements.lightboxFilename.textContent = photo.filename;
@@ -1430,6 +1503,7 @@
     if (photo.media_type === "video") {
       if (elements.lightboxLiveBtn) elements.lightboxLiveBtn.classList.add("hidden");
       if (elements.lightboxEditBtn) elements.lightboxEditBtn.classList.add("hidden");
+      if (elements.lightboxQuickRotateBtn) elements.lightboxQuickRotateBtn.classList.add("hidden");
       elements.lightboxImg.classList.add("hidden");
       elements.lightboxImg.classList.remove("ken-burns");
       if (elements.videoPlayerContainer) elements.videoPlayerContainer.classList.remove("hidden");
@@ -1466,6 +1540,7 @@
       };
     } else {
       if (elements.lightboxEditBtn) elements.lightboxEditBtn.classList.remove("hidden");
+      if (elements.lightboxQuickRotateBtn) elements.lightboxQuickRotateBtn.classList.remove("hidden");
       if (elements.videoPlayerContainer) elements.videoPlayerContainer.classList.add("hidden");
       elements.lightboxVideo.classList.add("hidden");
       elements.lightboxVideo.pause();
@@ -2056,11 +2131,31 @@
         }
       }
 
+      // Close compare modal if open
+      if (elements.compareModalWrapper && !elements.compareModalWrapper.classList.contains("hidden")) {
+        if (e.key === "Escape") {
+          closePhotoComparison();
+          return;
+        }
+      }
+
       if (!elements.lightboxModal.classList.contains("hidden")) {
         const currentPhoto = state.photos[state.lightboxIndex];
         const isCurrentVideo = currentPhoto && currentPhoto.media_type === "video";
 
-        if (e.key === "Escape") closeLightbox();
+        if (e.key === "Escape") {
+          if (state.zoomLevel > 1) {
+            resetPhotoZoom();
+          } else {
+            closeLightbox();
+          }
+        }
+        else if (e.key === "0" && !isCurrentVideo) {
+          resetPhotoZoom();
+        }
+        else if (e.key.toLowerCase() === "r" && !isCurrentVideo) {
+          quickRotateCurrentPhoto();
+        }
         else if (e.key === "ArrowLeft") {
           if (isCurrentVideo && (e.ctrlKey || e.altKey)) {
             elements.lightboxVideo.currentTime = Math.max(0, elements.lightboxVideo.currentTime - 10);
@@ -2317,6 +2412,9 @@
       "touchend",
       (e) => {
         if (e.changedTouches.length === 1) {
+          if (state.zoomLevel > 1) {
+            return;
+          }
           touchEndX = e.changedTouches[0].clientX;
           touchEndY = e.changedTouches[0].clientY;
 
@@ -2760,6 +2858,9 @@
         if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.remove("hidden");
         if (elements.createCollageBtn) {
           elements.createCollageBtn.classList.toggle("hidden", count < 2 || count > 6);
+        }
+        if (elements.comparePhotosBtn) {
+          elements.comparePhotosBtn.classList.toggle("hidden", count !== 2);
         }
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.add("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.add("hidden");
@@ -6835,6 +6936,545 @@
         }
       }
     });
+  }
+
+  // ==============================================================================
+  // PHASE 12: LIGHTBOX ZOOM & PAN ENGINE
+  // ==============================================================================
+  function applyPhotoZoom() {
+    if (!elements.lightboxImg) return;
+
+    if (state.zoomLevel <= 1) {
+      state.panX = 0;
+      state.panY = 0;
+    } else {
+      const container = elements.mediaDisplay;
+      if (container) {
+        const cRect = container.getBoundingClientRect();
+        const maxPanX = Math.max(0, (cRect.width * (state.zoomLevel - 1)) / 2);
+        const maxPanY = Math.max(0, (cRect.height * (state.zoomLevel - 1)) / 2);
+        state.panX = Math.max(-maxPanX, Math.min(maxPanX, state.panX));
+        state.panY = Math.max(-maxPanY, Math.min(maxPanY, state.panY));
+      }
+    }
+
+    const rot = state.photoRotation || 0;
+    elements.lightboxImg.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoomLevel}) rotate(${rot}deg)`;
+
+    if (elements.lightboxZoomBadge && elements.lightboxZoomLevelText) {
+      if (state.zoomLevel > 1) {
+        elements.lightboxZoomBadge.classList.remove("hidden");
+        elements.lightboxZoomLevelText.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+        elements.lightboxImg.classList.add("is-zoomed");
+      } else {
+        elements.lightboxZoomBadge.classList.add("hidden");
+        elements.lightboxImg.classList.remove("is-zoomed");
+      }
+    }
+  }
+
+  function resetPhotoZoom() {
+    state.zoomLevel = 1;
+    state.panX = 0;
+    state.panY = 0;
+    state.isPanning = false;
+    applyPhotoZoom();
+  }
+
+  function initPhotoZoomPan() {
+    if (!elements.lightboxImg || !elements.mediaDisplay) return;
+
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let initialPanX = 0;
+    let initialPanY = 0;
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+    let lastTapTime = 0;
+
+    // 1-Click Reset Button
+    if (elements.lightboxZoomResetBtn) {
+      elements.lightboxZoomResetBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        resetPhotoZoom();
+      });
+    }
+
+    // Double-click / Double-tap zoom toggle
+    elements.lightboxImg.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (state.zoomLevel > 1) {
+        resetPhotoZoom();
+      } else {
+        state.zoomLevel = 2.5;
+        const rect = elements.lightboxImg.getBoundingClientRect();
+        const offsetX = e.clientX - (rect.left + rect.width / 2);
+        const offsetY = e.clientY - (rect.top + rect.height / 2);
+        state.panX = -offsetX * 1.5;
+        state.panY = -offsetY * 1.5;
+        applyPhotoZoom();
+      }
+    });
+
+    // Mouse Wheel Zoom
+    elements.mediaDisplay.addEventListener(
+      "wheel",
+      (e) => {
+        if (elements.lightboxModal.classList.contains("hidden")) return;
+        const currentPhoto = state.photos[state.lightboxIndex];
+        if (!currentPhoto || currentPhoto.media_type === "video") return;
+
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.25 : -0.25;
+        const newZoom = Math.min(5.0, Math.max(1.0, state.zoomLevel + delta));
+
+        if (newZoom !== state.zoomLevel) {
+          state.zoomLevel = Math.round(newZoom * 100) / 100;
+          if (state.zoomLevel <= 1.0) {
+            state.zoomLevel = 1.0;
+            state.panX = 0;
+            state.panY = 0;
+          }
+          applyPhotoZoom();
+        }
+      },
+      { passive: false }
+    );
+
+    // Drag-to-Pan (Mouse)
+    elements.lightboxImg.addEventListener("mousedown", (e) => {
+      if (state.zoomLevel <= 1 || e.button !== 0) return;
+      e.preventDefault();
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      initialPanX = state.panX;
+      initialPanY = state.panY;
+      elements.lightboxImg.classList.add("is-panning");
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging || state.zoomLevel <= 1) return;
+      state.panX = initialPanX + (e.clientX - dragStartX);
+      state.panY = initialPanY + (e.clientY - dragStartY);
+      applyPhotoZoom();
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (isDragging) {
+        isDragging = false;
+        elements.lightboxImg.classList.remove("is-panning");
+      }
+    });
+
+    // Touch Support: Double-tap, Pinch-to-Zoom, and Drag-Pan
+    elements.mediaDisplay.addEventListener(
+      "touchstart",
+      (e) => {
+        if (elements.lightboxModal.classList.contains("hidden")) return;
+        const currentPhoto = state.photos[state.lightboxIndex];
+        if (!currentPhoto || currentPhoto.media_type === "video") return;
+
+        if (e.touches.length === 2) {
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          pinchStartDist = Math.hypot(dx, dy);
+          pinchStartZoom = state.zoomLevel;
+        } else if (e.touches.length === 1) {
+          const now = Date.now();
+          if (now - lastTapTime < 300) {
+            e.preventDefault();
+            if (state.zoomLevel > 1) {
+              resetPhotoZoom();
+            } else {
+              state.zoomLevel = 2.5;
+              applyPhotoZoom();
+            }
+            lastTapTime = 0;
+            return;
+          }
+          lastTapTime = now;
+
+          if (state.zoomLevel > 1) {
+            isDragging = true;
+            dragStartX = e.touches[0].clientX;
+            dragStartY = e.touches[0].clientY;
+            initialPanX = state.panX;
+            initialPanY = state.panY;
+            elements.lightboxImg.classList.add("is-panning");
+          }
+        }
+      },
+      { passive: false }
+    );
+
+    elements.mediaDisplay.addEventListener(
+      "touchmove",
+      (e) => {
+        if (elements.lightboxModal.classList.contains("hidden")) return;
+        const currentPhoto = state.photos[state.lightboxIndex];
+        if (!currentPhoto || currentPhoto.media_type === "video") return;
+
+        if (e.touches.length === 2 && pinchStartDist > 0) {
+          e.preventDefault();
+          const dx = e.touches[0].clientX - e.touches[1].clientX;
+          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const currentDist = Math.hypot(dx, dy);
+          const scale = (currentDist / pinchStartDist) * pinchStartZoom;
+          state.zoomLevel = Math.min(5.0, Math.max(1.0, Math.round(scale * 100) / 100));
+          applyPhotoZoom();
+        } else if (e.touches.length === 1 && isDragging && state.zoomLevel > 1) {
+          e.preventDefault();
+          state.panX = initialPanX + (e.touches[0].clientX - dragStartX);
+          state.panY = initialPanY + (e.touches[0].clientY - dragStartY);
+          applyPhotoZoom();
+        }
+      },
+      { passive: false }
+    );
+
+    elements.mediaDisplay.addEventListener("touchend", (e) => {
+      if (e.touches.length < 2) {
+        pinchStartDist = 0;
+      }
+      if (e.touches.length === 0 && isDragging) {
+        isDragging = false;
+        elements.lightboxImg.classList.remove("is-panning");
+      }
+    });
+  }
+
+  // ==============================================================================
+  // PHASE 12: QUICK 90° CLOCKWISE ROTATE IN LIGHTBOX
+  // ==============================================================================
+  let isQuickRotating = false;
+
+  async function quickRotateCurrentPhoto() {
+    if (elements.lightboxModal.classList.contains("hidden")) return;
+    const currentPhoto = state.photos[state.lightboxIndex];
+    if (!currentPhoto || currentPhoto.media_type === "video" || isQuickRotating) return;
+
+    isQuickRotating = true;
+    state.photoRotation = ((state.photoRotation || 0) + 90) % 360;
+    applyPhotoZoom();
+
+    showToast("Memutar foto 90°...", 1500);
+
+    try {
+      const res = await fetch(`/api/photos/${currentPhoto.id}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rotate: 90,
+          save_as_copy: false,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Gagal menyimpan rotasi foto");
+      }
+
+      const data = await res.json();
+      if (data.photo) {
+        currentPhoto.width = data.photo.width;
+        currentPhoto.height = data.photo.height;
+        currentPhoto.file_size = data.photo.file_size;
+      }
+
+      // Reset CSS rotation since file itself was rotated
+      state.photoRotation = 0;
+      const ts = Date.now();
+      elements.lightboxImg.src = `/api/media/${currentPhoto.id}?t=${ts}`;
+      applyPhotoZoom();
+
+      // Bust thumbnail in grid
+      const gridImg = document.querySelector(`.photo-tile[data-id="${currentPhoto.id}"] img`);
+      if (gridImg) {
+        gridImg.src = `/api/thumbnails/${currentPhoto.id}?force=true&t=${ts}`;
+      }
+
+      showToast("Foto berhasil diputar 90°!", 2000);
+    } catch (err) {
+      console.error("Quick rotate error:", err);
+      showToast("Gagal memutar foto: " + err.message);
+    } finally {
+      isQuickRotating = false;
+    }
+  }
+
+  function initLightboxQuickRotate() {
+    if (elements.lightboxQuickRotateBtn) {
+      elements.lightboxQuickRotateBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        quickRotateCurrentPhoto();
+      });
+    }
+  }
+
+  // ==============================================================================
+  // PHASE 12: SIDE-BY-SIDE PHOTO COMPARISON TOOL
+  // ==============================================================================
+  function openPhotoComparison() {
+    if (state.selectedPhotos.size !== 2) {
+      showToast("Pilih tepat 2 foto untuk membandingkan!");
+      return;
+    }
+
+    const selectedIds = Array.from(state.selectedPhotos);
+    const photoA = state.photos.find((p) => p.id === selectedIds[0]) || { id: selectedIds[0] };
+    const photoB = state.photos.find((p) => p.id === selectedIds[1]) || { id: selectedIds[1] };
+    state.comparePhotos = [photoA, photoB];
+
+    // Setup Split Mode Images
+    if (elements.compareImgA) elements.compareImgA.src = `/api/media/${photoA.id}`;
+    if (elements.compareImgB) elements.compareImgB.src = `/api/media/${photoB.id}`;
+
+    // Setup Side-by-Side Images
+    if (elements.compareSideImgA) elements.compareSideImgA.src = `/api/media/${photoA.id}`;
+    if (elements.compareSideImgB) elements.compareSideImgB.src = `/api/media/${photoB.id}`;
+
+    // Setup Metadata Strips
+    const formatMeta = (p) => {
+      const name = p.filename || `Foto #${p.id}`;
+      const res = p.width && p.height ? `${p.width}×${p.height}` : "";
+      const date = p.taken_formatted || "";
+      return [name, res, date].filter(Boolean).join(" • ");
+    };
+
+    if (elements.metaStripValA) elements.metaStripValA.textContent = formatMeta(photoA);
+    if (elements.metaStripValB) elements.metaStripValB.textContent = formatMeta(photoB);
+
+    if (elements.compareMetaNameA) elements.compareMetaNameA.textContent = photoA.filename || `Foto #${photoA.id}`;
+    if (elements.compareMetaInfoA) elements.compareMetaInfoA.textContent = formatMeta(photoA);
+    if (elements.compareMetaNameB) elements.compareMetaNameB.textContent = photoB.filename || `Foto #${photoB.id}`;
+    if (elements.compareMetaInfoB) elements.compareMetaInfoB.textContent = formatMeta(photoB);
+
+    // Reset Split Slider to 50%
+    setCompareSplitPosition(50);
+
+    // Default to split mode
+    setCompareViewMode("split");
+
+    if (elements.compareModalWrapper) {
+      elements.compareModalWrapper.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
+  }
+
+  function closePhotoComparison() {
+    if (elements.compareModalWrapper) {
+      elements.compareModalWrapper.classList.add("hidden");
+      document.body.style.overflow = "";
+    }
+  }
+
+  function setCompareViewMode(mode) {
+    state.compareMode = mode;
+    if (mode === "split") {
+      if (elements.compareSplitContainer) elements.compareSplitContainer.classList.remove("hidden");
+      if (elements.compareSideContainer) elements.compareSideContainer.classList.add("hidden");
+      if (elements.compareSplitModeBtn) elements.compareSplitModeBtn.classList.add("active");
+      if (elements.compareSideModeBtn) elements.compareSideModeBtn.classList.remove("active");
+    } else {
+      if (elements.compareSplitContainer) elements.compareSplitContainer.classList.add("hidden");
+      if (elements.compareSideContainer) elements.compareSideContainer.classList.remove("hidden");
+      if (elements.compareSplitModeBtn) elements.compareSplitModeBtn.classList.remove("active");
+      if (elements.compareSideModeBtn) elements.compareSideModeBtn.classList.add("active");
+    }
+  }
+
+  function setCompareSplitPosition(percent) {
+    const pct = Math.max(0, Math.min(100, percent));
+    if (elements.compareDivider) elements.compareDivider.style.left = `${pct}%`;
+    if (elements.compareLayerA) elements.compareLayerA.style.clipPath = `polygon(0 0, ${pct}% 0, ${pct}% 100%, 0 100%)`;
+  }
+
+  function initPhotoComparison() {
+    if (!elements.compareModalWrapper) return;
+
+    if (elements.comparePhotosBtn) {
+      elements.comparePhotosBtn.addEventListener("click", openPhotoComparison);
+    }
+
+    if (elements.closeCompareModalBtn) {
+      elements.closeCompareModalBtn.addEventListener("click", closePhotoComparison);
+    }
+
+    if (elements.compareCloseFooterBtn) {
+      elements.compareCloseFooterBtn.addEventListener("click", closePhotoComparison);
+    }
+
+    if (elements.compareModalBackdrop) {
+      elements.compareModalBackdrop.addEventListener("click", closePhotoComparison);
+    }
+
+    // Mode Toggle
+    if (elements.compareSplitModeBtn) {
+      elements.compareSplitModeBtn.addEventListener("click", () => setCompareViewMode("split"));
+    }
+    if (elements.compareSideModeBtn) {
+      elements.compareSideModeBtn.addEventListener("click", () => setCompareViewMode("side"));
+    }
+
+    // Keep A / Keep B
+    if (elements.compareKeepABtn) {
+      elements.compareKeepABtn.addEventListener("click", () => {
+        if (state.comparePhotos.length === 2) {
+          const dropId = state.comparePhotos[1].id;
+          state.selectedPhotos.delete(dropId);
+          document.querySelector(`.photo-tile[data-id="${dropId}"]`)?.classList.remove("selected");
+          updateSelectionBar();
+          closePhotoComparison();
+          showToast(`Foto 1 dipilih! Foto 2 dilepas.`);
+        }
+      });
+    }
+
+    if (elements.compareKeepBBtn) {
+      elements.compareKeepBBtn.addEventListener("click", () => {
+        if (state.comparePhotos.length === 2) {
+          const dropId = state.comparePhotos[0].id;
+          state.selectedPhotos.delete(dropId);
+          document.querySelector(`.photo-tile[data-id="${dropId}"]`)?.classList.remove("selected");
+          updateSelectionBar();
+          closePhotoComparison();
+          showToast(`Foto 2 dipilih! Foto 1 dilepas.`);
+        }
+      });
+    }
+
+    // Draggable Split Divider Logic
+    let isDraggingSplit = false;
+
+    function handleSplitMove(clientX) {
+      if (!isDraggingSplit || !elements.compareSplitContainer) return;
+      const rect = elements.compareSplitContainer.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const x = clientX - rect.left;
+      const pct = (x / rect.width) * 100;
+      setCompareSplitPosition(pct);
+    }
+
+    if (elements.compareDivider) {
+      elements.compareDivider.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        isDraggingSplit = true;
+        elements.compareDivider.classList.add("active");
+      });
+    }
+
+    if (elements.compareSplitContainer) {
+      elements.compareSplitContainer.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".compare-badge")) return;
+        isDraggingSplit = true;
+        handleSplitMove(e.clientX);
+      });
+    }
+
+    window.addEventListener("mousemove", (e) => {
+      if (isDraggingSplit) {
+        handleSplitMove(e.clientX);
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (isDraggingSplit) {
+        isDraggingSplit = false;
+        if (elements.compareDivider) elements.compareDivider.classList.remove("active");
+      }
+    });
+
+    // Touch Support for Divider
+    if (elements.compareSplitContainer) {
+      elements.compareSplitContainer.addEventListener(
+        "touchstart",
+        (e) => {
+          if (e.touches.length === 1 && !e.target.closest(".compare-badge")) {
+            isDraggingSplit = true;
+            handleSplitMove(e.touches[0].clientX);
+          }
+        },
+        { passive: true }
+      );
+
+      elements.compareSplitContainer.addEventListener(
+        "touchmove",
+        (e) => {
+          if (isDraggingSplit && e.touches.length === 1) {
+            handleSplitMove(e.touches[0].clientX);
+          }
+        },
+        { passive: true }
+      );
+
+      elements.compareSplitContainer.addEventListener("touchend", () => {
+        isDraggingSplit = false;
+        if (elements.compareDivider) elements.compareDivider.classList.remove("active");
+      });
+    }
+  }
+
+  // ==============================================================================
+  // PHASE 12: TIMELINE SORT ORDER & ASPECT RATIO QUICK FILTERS
+  // ==============================================================================
+  function initSortAndAspectFilters() {
+    // Sort Order Toggle Button (Desc vs Asc)
+    if (elements.sortOrderToggleBtn) {
+      elements.sortOrderToggleBtn.addEventListener("click", () => {
+        if (state.sortOrder === "desc") {
+          state.sortOrder = "asc";
+          if (elements.sortOrderIcon) elements.sortOrderIcon.textContent = "↑";
+          if (elements.sortOrderLabel) elements.sortOrderLabel.textContent = "Terlama";
+          elements.sortOrderToggleBtn.classList.add("active-asc");
+          elements.sortOrderToggleBtn.title = "Urutan Linimasa: Terlama ke Terbaru (Klik untuk ubah ke Terbaru)";
+          showToast("Urutan: Terlama ke Terbaru (Ascending)");
+        } else {
+          state.sortOrder = "desc";
+          if (elements.sortOrderIcon) elements.sortOrderIcon.textContent = "↓";
+          if (elements.sortOrderLabel) elements.sortOrderLabel.textContent = "Terbaru";
+          elements.sortOrderToggleBtn.classList.remove("active-asc");
+          elements.sortOrderToggleBtn.title = "Urutan Linimasa: Terbaru ke Terlama (Klik untuk ubah ke Terlama)";
+          showToast("Urutan: Terbaru ke Terlama (Descending)");
+        }
+        fetchPhotos(true);
+      });
+    }
+
+    // Aspect Ratio Filter: Landscape
+    if (elements.aspectLandscapeChip) {
+      elements.aspectLandscapeChip.addEventListener("click", () => {
+        if (state.aspectRatio === "landscape") {
+          state.aspectRatio = null;
+          elements.aspectLandscapeChip.classList.remove("active");
+          showToast("Filter Lanskap dinonaktifkan");
+        } else {
+          state.aspectRatio = "landscape";
+          elements.aspectLandscapeChip.classList.add("active");
+          if (elements.aspectPortraitChip) elements.aspectPortraitChip.classList.remove("active");
+          showToast("Filter: Foto Lanskap (Horisontal)");
+        }
+        fetchPhotos(true);
+      });
+    }
+
+    // Aspect Ratio Filter: Portrait
+    if (elements.aspectPortraitChip) {
+      elements.aspectPortraitChip.addEventListener("click", () => {
+        if (state.aspectRatio === "portrait") {
+          state.aspectRatio = null;
+          elements.aspectPortraitChip.classList.remove("active");
+          showToast("Filter Potret dinonaktifkan");
+        } else {
+          state.aspectRatio = "portrait";
+          elements.aspectPortraitChip.classList.add("active");
+          if (elements.aspectLandscapeChip) elements.aspectLandscapeChip.classList.remove("active");
+          showToast("Filter: Foto Potret (Vertikal)");
+        }
+        fetchPhotos(true);
+      });
+    }
   }
 
   // --- Bootstrap ---

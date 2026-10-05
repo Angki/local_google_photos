@@ -807,6 +807,43 @@ class TestGooglePhotosTakeout(unittest.TestCase):
         asyncio.run(_run())
 
 
+    def test_sort_order_and_aspect_ratio_filters(self):
+        """Tests timeline sort ordering (ASC vs DESC) and aspect ratio filters."""
+        # 1. Test sort order in database
+        photos_desc = get_photos(limit=5, sort_order="desc")
+        photos_asc = get_photos(limit=5, sort_order="asc")
+        self.assertTrue(len(photos_desc) > 0)
+        self.assertTrue(len(photos_asc) > 0)
+        if len(photos_desc) >= 2 and len(photos_asc) >= 2:
+            self.assertGreaterEqual(photos_desc[0]["taken_at"], photos_desc[1]["taken_at"])
+            self.assertLessEqual(photos_asc[0]["taken_at"], photos_asc[1]["taken_at"])
+
+        # 2. Test aspect ratio in database
+        photos_landscape = get_photos(limit=5, aspect_ratio="landscape")
+        for p in photos_landscape:
+            if p["width"] and p["height"]:
+                self.assertGreater(p["width"], p["height"])
+
+        photos_portrait = get_photos(limit=5, aspect_ratio="portrait")
+        for p in photos_portrait:
+            if p["width"] and p["height"]:
+                self.assertGreater(p["height"], p["width"])
+
+        # 3. Test REST API endpoint
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.get("/api/photos?sort_order=asc&limit=5")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertIn("photos", data)
+
+                resp_land = await client.get("/api/photos?aspect_ratio=landscape&limit=5")
+                self.assertEqual(resp_land.status_code, 200)
+                land_data = resp_land.json()
+                self.assertIn("photos", land_data)
+        asyncio.run(_run())
+
+
 if __name__ == "__main__":
     unittest.main()
 

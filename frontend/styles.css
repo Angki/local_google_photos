@@ -6150,5 +6150,435 @@ body.is-selecting .photo-tile .select-overlay,
   }
 }
 
+/* ==============================================================================
+   PHASE 12: LIGHTBOX ZOOM BADGE, QUICK ROTATE, COMPARISON SLIDER & SORT
+   ============================================================================== */
+
+/* Lightbox Floating Zoom Level Badge */
+.lightbox-zoom-badge {
+  position: absolute;
+  top: 76px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(18, 20, 24, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 4px 12px;
+  color: #f1f3f4;
+  font-size: 0.8rem;
+  font-weight: 600;
+  z-index: 15;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  user-select: none;
+}
+
+.lightbox-zoom-badge.hidden {
+  opacity: 0;
+  pointer-events: none;
+  display: none !important;
+}
+
+.zoom-reset-btn {
+  background: rgba(255, 255, 255, 0.18);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.zoom-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+/* Lightbox Content Zoom & Pan Smooth Transform */
+#lightboxImg {
+  transform-origin: center center;
+  transition: transform 0.08s ease-out;
+  cursor: default;
+}
+
+#lightboxImg.is-zoomed {
+  cursor: grab;
+}
+
+#lightboxImg.is-panning {
+  cursor: grabbing;
+  transition: none; /* instant tracking while dragging */
+}
+
+/* Timeline Sort Order Toggle Chip & Aspect Ratio Chips */
+.chip-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  color: var(--text-primary, #e8eaed);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.18s ease);
+}
+
+.chip-sort:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.14));
+  border-color: var(--accent-blue, #1a73e8);
+}
+
+.chip-sort.active-asc {
+  background: rgba(26, 115, 232, 0.18);
+  border-color: var(--accent-blue, #1a73e8);
+  color: var(--accent-blue, #8ab4f8);
+}
+
+.chip-aspect {
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.18s ease);
+}
+
+.chip-aspect.active {
+  background: var(--accent-blue, #1a73e8) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-blue, #1a73e8) !important;
+}
+
+/* Photo Comparison Modal (Split Slider & Side-by-Side) */
+.compare-modal-card {
+  max-width: 1040px;
+  width: 95vw;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface, #1e2024);
+  border-radius: 20px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.compare-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.compare-mode-toggle {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.compare-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #9aa0a6);
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.compare-mode-btn:hover {
+  color: var(--text-primary, #fff);
+}
+
+.compare-mode-btn.active {
+  background: var(--accent-blue, #1a73e8);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.4);
+}
+
+.compare-modal-body {
+  flex: 1;
+  position: relative;
+  background: #0d0f12;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.compare-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Split Slider Container */
+.compare-split-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.compare-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.compare-layer img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.compare-layer-a {
+  z-index: 2;
+  clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+}
+
+.compare-layer-b {
+  z-index: 1;
+}
+
+.compare-badge {
+  position: absolute;
+  bottom: 16px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 4;
+}
+
+.compare-badge-a {
+  left: 16px;
+  background: rgba(26, 115, 232, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.compare-badge-b {
+  right: 16px;
+  background: rgba(234, 67, 53, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Draggable Divider */
+.compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 4px;
+  background: #ffffff;
+  transform: translateX(-50%);
+  z-index: 10;
+  cursor: ew-resize;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.8);
+}
+
+.compare-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  cursor: ew-resize;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.compare-handle svg {
+  width: 22px;
+  height: 22px;
+}
+
+.compare-handle:hover,
+.compare-divider.active .compare-handle {
+  transform: translate(-50%, -50%) scale(1.15);
+  background: var(--accent-blue, #8ab4f8);
+  color: #ffffff;
+}
+
+/* Side-by-Side Container */
+.compare-side-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.compare-side-item {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.compare-side-img-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #090a0d;
+}
+
+.compare-side-img-wrap img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.compare-side-meta {
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.compare-side-meta strong {
+  font-size: 0.85rem;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-side-meta span {
+  font-size: 0.74rem;
+  color: var(--text-tertiary, #9aa0a6);
+}
+
+/* Compare Modal Footer */
+.compare-modal-footer {
+  padding: 12px 20px;
+  background: var(--bg-surface, #1e2024);
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.compare-meta-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9aa0a6);
+  flex-wrap: wrap;
+}
+
+.meta-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-strip-label {
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+}
+
+.meta-strip-val {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--accent-blue, #8ab4f8);
+}
+
+.meta-strip-divider {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.compare-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Responsive adjustment for comparison modal on mobile */
+@media (max-width: 768px) {
+  .compare-modal-card {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    max-width: none;
+  }
+  .compare-side-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    padding: 8px;
+  }
+  .compare-modal-footer {
+    padding: 10px 14px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .compare-meta-strip {
+    justify-content: space-between;
+  }
+  .compare-actions-row {
+    justify-content: stretch;
+  }
+  .compare-actions-row .action-btn,
+  .compare-actions-row .btn-cancel {
+    flex: 1;
+    font-size: 0.78rem;
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .lightbox-zoom-badge {
+    top: 64px;
+    left: 12px;
+  }
+}
+
+
 
 
