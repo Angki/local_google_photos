@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI):
             )
     else:
         logger.info(f"Database ready with {total_photos} photos and videos.")
+        if SOURCE_DATA_DIR.is_dir():
+            import threading
+            from backend.scanner import sync_missing_media
+            threading.Thread(target=sync_missing_media, daemon=True, name="StartupSyncThread").start()
 
     # Start real-time Hot Folder Watcher on SOURCE_DATA_DIR
     from backend.watcher import folder_watcher

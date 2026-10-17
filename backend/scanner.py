@@ -468,14 +468,59 @@ def index_single_media_file(media_path: Path) -> Optional[int]:
             except Exception:
                 pass
 
-        # Generate thumbnail immediately
-        if media_type == "image":
-            thumb_res = generate_thumbnail(p_id, str(media_path), media_type)
-            if thumb_res:
-                thumb_path, w, h = thumb_res
-                update_thumbnail_path(p_id, thumb_path, w, h)
+        # Generate thumbnail immediately (images & videos via FFmpeg)
+        thumb_res = generate_thumbnail(p_id, str(media_path), media_type)
+        if thumb_res:
+            thumb_path, w, h = thumb_res
+            update_thumbnail_path(p_id, thumb_path, w, h)
 
         return p_id
     except Exception as e:
         logger.warning(f"Failed to index single file {media_path}: {e}")
         return None
+
+
+def sync_missing_media() -> int:
+    """
+    Fast background sync: compares files on disk in SOURCE_DATA_DIR with SQLite.
+    Indexes any newly discovered media files that aren't yet in the database,
+    associates them with albums if applicable, and generates thumbnails.
+    """
+    if not SOURCE_DATA_DIR.is_dir():
+        return 0
+
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute("SELECT file_path FROM photos").fetchall()
+            existing_paths = {os.path.normpath(r["file_path"]).lower() for r in rows}
+
+        target_dirs = [
+            d for d in SOURCE_DATA_DIR.iterdir()
+            if d.is_dir() and is_target_folder(d.name)
+        ]
+        target_dirs.sort(
+            key=lambda d: (0 if YEAR_FOLDER_PATTERN.match(d.name) else 1, d.name),
+            reverse=False
+        )
+
+        new_count = 0
+        for folder in target_dirs:
+            try:
+                for entry in folder.iterdir():
+                    if entry.is_file() and entry.suffix.lower() in ALL_MEDIA_EXTENSIONS:
+                        norm = os.path.normpath(str(entry.resolve())).lower()
+                        if norm not in existing_paths:
+                            p_id = index_single_media_file(entry)
+                            if p_id:
+                                existing_paths.add(norm)
+                                new_count += 1
+            except Exception as e:
+                logger.debug(f"Error scanning folder {folder.name} during sync: {e}")
+
+        if new_count > 0:
+            logger.info(f"Background sync complete: {new_count} new media items indexed.")
+        return new_count
+    except Exception as e:
+        logger.warning(f"Background sync encountered error: {e}")
+        return 0
+

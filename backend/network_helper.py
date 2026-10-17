@@ -8,8 +8,14 @@ import io
 import logging
 import socket
 from typing import Any, Dict, Optional
-import qrcode
-import qrcode.image.svg
+
+try:
+    import qrcode
+    import qrcode.image.svg
+    _qrcode_available = True
+except ImportError:
+    _qrcode_available = False
+
 
 logger = logging.getLogger("NetworkHelper")
 
@@ -39,6 +45,9 @@ def generate_qr_code_svg(url: str) -> str:
     Generates a lightweight, scalable SVG string of the QR code pointing to the given URL.
     Can be directly embedded into HTML without any image conversion overhead.
     """
+    if not _qrcode_available:
+        return ""
+
     factory = qrcode.image.svg.SvgPathImage
     qr = qrcode.QRCode(
         version=1,
