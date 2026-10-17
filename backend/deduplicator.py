@@ -43,18 +43,46 @@ def compute_quick_file_hash(file_path: str, chunk_size: int = 65536) -> Optional
         return None
 
 
-def compute_perceptual_hash(image_path: str) -> Optional[str]:
-    """Computes a 64-bit dHash string for perceptual near-duplicate detection."""
-    p = Path(image_path)
-    if not p.is_file():
-        return None
+_dhash_cache: Dict[int, int] = {}
+
+
+def compute_perceptual_hash(image_or_path: Any) -> Optional[int]:
+    """
+    Computes a 64-bit difference hash (dHash) using PIL and numpy.
+    Resizes image to 9x8 grayscale, evaluates row-wise gradient,
+    producing a compact 64-bit integer representation of visual structure.
+    Zero C-library requirement, fast and robust to resolution/compression differences.
+    """
     try:
-        import imagehash
         from PIL import Image
-        with Image.open(p) as img:
-            return str(imagehash.dhash(img))
+        close_needed = False
+        if isinstance(image_or_path, (str, Path)):
+            p = Path(image_or_path)
+            if not p.is_file():
+                return None
+            img = Image.open(p)
+            close_needed = True
+        else:
+            img = image_or_path
+
+        gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+        pixels = np.asarray(gray, dtype=np.int32)
+        diff = pixels[:, 1:] > pixels[:, :-1]
+        hash_val = 0
+        for bit in diff.flatten():
+            hash_val = (hash_val << 1) | int(bit)
+
+        if close_needed:
+            img.close()
+
+        return hash_val
     except Exception:
         return None
+
+
+def hamming_distance(h1: int, h2: int) -> int:
+    """Calculates bitwise Hamming distance between two 64-bit hashes."""
+    return bin(h1 ^ h2).count("1")
 
 
 def find_duplicates(limit_groups: int = 50) -> Dict[str, Any]:
@@ -238,6 +266,69 @@ def find_duplicates(limit_groups: int = 50) -> Dict[str, Any]:
                     potential_savings_bytes += savable
             except Exception as e:
                 logger.debug(f"Burst clustering error: {e}")
+
+        # 3. Perceptual Similarities (dHash visual match, e.g. WhatsApp compression vs original camera, edits/crops)
+        if len(groups) < limit_groups:
+            try:
+                candidate_perceptual = [p for p in all_photos if p["id"] not in seen_photo_ids][:600]
+                hashes: List[Tuple[Dict[str, Any], int]] = []
+                for p in candidate_perceptual:
+                    pid = p["id"]
+                    if pid in _dhash_cache:
+                        h = _dhash_cache[pid]
+                    else:
+                        img_path = p.get("thumbnail_path") or p.get("file_path")
+                        h = compute_perceptual_hash(img_path)
+                        if h is not None:
+                            _dhash_cache[pid] = h
+                    if h is not None:
+                        hashes.append((p, h))
+
+                # Group by perceptual proximity (Hamming distance <= 6 out of 64 bits)
+                p_used = set()
+                for i in range(len(hashes)):
+                    if hashes[i][0]["id"] in p_used:
+                        continue
+                    cluster = [hashes[i][0]]
+                    h1 = hashes[i][1]
+                    for j in range(i + 1, len(hashes)):
+                        p2, h2 = hashes[j]
+                        if p2["id"] in p_used:
+                            continue
+                        if hamming_distance(h1, h2) <= 6:
+                            cluster.append(p2)
+                            p_used.add(p2["id"])
+
+                    if len(cluster) >= 2:
+                        p_used.add(hashes[i][0]["id"])
+                        cluster.sort(
+                            key=lambda x: (
+                                x.get("is_favorite", 0),
+                                (x.get("width", 0) * x.get("height", 0)),
+                                x.get("file_size", 0)
+                            ),
+                            reverse=True
+                        )
+                        keep_id = cluster[0]["id"]
+                        savable = sum(item["file_size"] for item in cluster[1:])
+                        for item in cluster:
+                            seen_photo_ids.add(item["id"])
+                            item["is_recommended_keep"] = (item["id"] == keep_id)
+
+                        groups.append({
+                            "group_id": f"perceptual_{cluster[0]['id']}",
+                            "type": "perceptual",
+                            "reason": f"Kemiripan visual > 90% (Perceptual Match / Kompresi)",
+                            "keep_photo_id": keep_id,
+                            "savable_bytes": savable,
+                            "photos": cluster,
+                        })
+                        total_duplicate_files += (len(cluster) - 1)
+                        potential_savings_bytes += savable
+                        if len(groups) >= limit_groups:
+                            break
+            except Exception as e:
+                logger.debug(f"Perceptual clustering error: {e}")
 
     return {
         "total_groups": len(groups),
