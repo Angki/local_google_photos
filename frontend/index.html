@@ -213,6 +213,12 @@ CHANGELOG:
         </svg>
       </button>
 
+      <!-- LAN Guest / Admin Access Mode Indicator -->
+      <button class="admin-access-pill hidden" id="adminAccessPill" title="Status Akses LAN (Klik untuk Buka Admin PIN)">
+        <span class="admin-pill-icon" id="adminPillIcon">🔒</span>
+        <span class="admin-pill-text" id="adminPillText">Mode Tamu</span>
+      </button>
+
       <!-- Direct Upload Media Button -->
       <button class="icon-btn upload-header-btn" id="uploadBtn" title="Unggah Foto & Video">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -298,6 +304,13 @@ CHANGELOG:
         </svg>
         <span>Kunci</span>
       </button>
+      <button class="action-btn" id="batchEditMetadataBtn" title="Ubah Tanggal, Waktu & Lokasi (Batch)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 20h9"></path>
+          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+        </svg>
+        <span>Edit Info</span>
+      </button>
       <button class="action-btn danger-btn" id="deleteSelectedBtn" title="Move to Trash">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"></polyline>
@@ -331,7 +344,9 @@ CHANGELOG:
       <button class="chip" data-category="documents">📄 Documents</button>
       <button class="chip" data-category="nature">🌿 Nature</button>
       <button class="chip" data-category="receipts">🧾 Receipts</button>
-      <button class="chip" data-category="people">👥 People</button>
+      <button class="chip chip-people" data-category="people" id="peopleChip" title="Album Orang & Wajah (People & Pets)">
+        👥 Orang & Wajah <span class="trash-badge hidden" id="peopleBadgeCount">0</span>
+      </button>
       <button class="chip" data-category="food">🍔 Food</button>
       <button class="chip" data-category="screenshots">📱 Screenshots</button>
       <button class="chip" data-category="pets & animals">🐾 Animals</button>
@@ -379,7 +394,15 @@ CHANGELOG:
             <span class="memories-sparkle">✨</span>
             <span class="memories-title">Memories • Pada Hari Ini</span>
           </div>
-          <span class="memories-subtitle" id="memoriesSubtitle">Nostalgia foto tahun-tahun lalu</span>
+          <div class="memories-header-right">
+            <span class="memories-subtitle" id="memoriesSubtitle">Nostalgia foto tahun-tahun lalu</span>
+            <button type="button" class="btn-highlight-reel" id="playHighlightReelBtn" title="Putar Sorotan Kenangan Animasi">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span>Putar Sorotan</span>
+            </button>
+          </div>
         </div>
         <div class="memories-carousel" id="memoriesCarousel">
           <!-- Memory story cards dynamically rendered here -->
@@ -517,6 +540,50 @@ CHANGELOG:
       </div>
     </main>
 
+    <!-- People & Pets / Face Clustering View (Hidden by default) -->
+    <main class="album-container hidden" id="peopleContainer">
+      <div class="album-header people-header">
+        <button class="icon-btn back-btn" id="peopleBackBtn" title="Kembali ke Galeri">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </button>
+        <div class="trash-header-info">
+          <h2>👥 Orang & Wajah (People & Pets)</h2>
+          <span class="trash-count-badge" id="peopleCountBadge">Memuat...</span>
+        </div>
+      </div>
+
+      <div class="people-notice-card">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>Wajah dan orang yang terdeteksi dalam foto Anda. Klik lingkaran wajah untuk melihat semua foto yang memuat orang tersebut.</span>
+      </div>
+
+      <!-- People Avatar Grid -->
+      <div class="people-grid" id="peopleGrid">
+        <!-- People cards dynamically rendered here -->
+      </div>
+
+      <!-- Empty People State -->
+      <div class="empty-state hidden" id="peopleEmptyState">
+        <div class="trash-empty-icon" style="background: rgba(66, 133, 244, 0.15); color: #4285F4;">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        <h3>Belum Ada Orang Terdeteksi</h3>
+        <p>Metadata wajah belum ditemukan pada foto yang aktif.</p>
+      </div>
+    </main>
+
     <!-- Clean Up / Duplicates View (Hidden by default) -->
     <main class="album-container hidden" id="duplicatesContainer">
       <div class="album-header duplicates-header">
@@ -554,7 +621,14 @@ CHANGELOG:
           <line x1="12" y1="8" x2="12" y2="12"></line>
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
         </svg>
-        <span id="duplicatesNoticeText">Memindai file duplikat 100% identik dan foto burst beruntun untuk menghemat kapasitas hard disk Anda. Foto berlabel <strong>BEST</strong> direkomendasikan untuk dipertahankan.</span>
+        <span id="duplicatesNoticeText">Memindai file duplikat 100% identik, foto serupa (pHash), dan burst shots untuk menghemat kapasitas penyimpanan Anda. Foto berlabel <strong>BEST</strong> direkomendasikan untuk dipertahankan.</span>
+      </div>
+
+      <div class="duplicates-filter-row" id="duplicatesFilterRow">
+        <button type="button" class="dup-filter-chip active" data-filter="all">Semua Duplikat</button>
+        <button type="button" class="dup-filter-chip" data-filter="exact">⚡ 100% Identik</button>
+        <button type="button" class="dup-filter-chip" data-filter="perceptual">🎨 Visual Serupa (pHash)</button>
+        <button type="button" class="dup-filter-chip" data-filter="near_duplicate">⏱️ Burst Shots</button>
       </div>
 
       <!-- Duplicate Groups List -->
@@ -1634,6 +1708,8 @@ CHANGELOG:
           <div class="pin-dot" id="pinDot1"></div>
           <div class="pin-dot" id="pinDot2"></div>
           <div class="pin-dot" id="pinDot3"></div>
+          <div class="pin-dot" id="pinDot4"></div>
+          <div class="pin-dot" id="pinDot5"></div>
         </div>
         <div class="pin-error-text hidden" id="pinErrorText">PIN salah. Silakan coba lagi.</div>
         
@@ -1955,6 +2031,117 @@ CHANGELOG:
     </div>
   </div>
 
+  <!-- Batch Metadata & Location Editor Modal -->
+  <div class="sync-modal-wrapper hidden" id="batchMetadataModalWrapper" role="dialog" aria-modal="true">
+    <div class="sync-modal-backdrop" id="batchMetadataModalBackdrop"></div>
+    <div class="sync-modal-card metadata-modal-card batch-metadata-modal-card">
+      <div class="sync-modal-header">
+        <div class="sync-title-row">
+          <div class="modal-icon-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3>Ubah Info & Lokasi (Batch)</h3>
+            <span class="sync-stage-text" id="batchMetadataSubtitle">Perbarui <span id="batchCountBadge">0</span> foto terpilih</span>
+          </div>
+        </div>
+        <button class="icon-btn" id="batchMetadataCloseBtn" title="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sync-modal-body metadata-modal-body">
+        <form id="batchMetadataForm" class="metadata-form" onsubmit="return false;">
+          <div class="batch-section-title">📅 Tanggal & Waktu Pengambilan</div>
+          <div class="batch-radio-group">
+            <label class="batch-radio-item">
+              <input type="radio" name="batchDateMode" value="none" checked id="batchDateModeNone">
+              <span>Pertahankan tanggal asli</span>
+            </label>
+            <label class="batch-radio-item">
+              <input type="radio" name="batchDateMode" value="set" id="batchDateModeSet">
+              <span>Setel tanggal baru</span>
+            </label>
+            <label class="batch-radio-item">
+              <input type="radio" name="batchDateMode" value="shift" id="batchDateModeShift">
+              <span>Geser waktu (+/- Jam)</span>
+            </label>
+          </div>
+
+          <div class="form-group hidden" id="batchDateSetGroup">
+            <label for="batchNewDatetimeInput">Tanggal & Waktu Baru</label>
+            <input type="datetime-local" step="1" id="batchNewDatetimeInput" class="form-control" />
+            <small class="form-help">Semua foto terpilih akan diubah ke waktu ini.</small>
+          </div>
+
+          <div class="form-group hidden" id="batchDateShiftGroup">
+            <label for="batchShiftHoursInput">Pergeseran Waktu (Jam)</label>
+            <div class="shift-hours-input-wrap">
+              <input type="number" step="0.5" id="batchShiftHoursInput" class="form-control" placeholder="Contoh: 1 (maju), -7 (mundur)" />
+              <div class="shift-presets">
+                <button type="button" class="btn-chip" data-shift="1">+1 Jam</button>
+                <button type="button" class="btn-chip" data-shift="-1">-1 Jam</button>
+                <button type="button" class="btn-chip" data-shift="24">+1 Hari</button>
+                <button type="button" class="btn-chip" data-shift="-24">-1 Hari</button>
+              </div>
+            </div>
+            <small class="form-help">Menyesuaikan zona waktu foto liburan atau setting kamera.</small>
+          </div>
+
+          <hr class="album-divider" style="margin: 16px 0;">
+
+          <div class="batch-section-title">📍 Lokasi GPS Bersama</div>
+          <div class="form-group">
+            <label for="batchLocationLabelInput">Nama Tempat / Label Lokasi</label>
+            <input type="text" id="batchLocationLabelInput" class="form-control" placeholder="Contoh: Pantai Kuta, Bali (opsional)" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group form-col">
+              <label for="batchLatitudeInput">Latitude</label>
+              <input type="number" step="0.000001" id="batchLatitudeInput" class="form-control" placeholder="-8.723" />
+            </div>
+            <div class="form-group form-col">
+              <label for="batchLongitudeInput">Longitude</label>
+              <input type="number" step="0.000001" id="batchLongitudeInput" class="form-control" placeholder="115.172" />
+            </div>
+          </div>
+
+          <div class="map-picker-block">
+            <div class="map-picker-header">
+              <span>Pilih Titik di Peta (Klik peta untuk meletakkan pin bersama)</span>
+              <button type="button" class="btn-text-action" id="batchClearPinBtn">Kosongkan Lokasi</button>
+            </div>
+            <div id="batchMetadataMapPicker" class="metadata-map-picker"></div>
+          </div>
+
+          <hr class="album-divider" style="margin: 16px 0;">
+
+          <div class="batch-section-title">📝 Keterangan / Deskripsi Bersama</div>
+          <div class="form-group">
+            <input type="text" id="batchDescriptionInput" class="form-control" placeholder="Tuliskan keterangan untuk seluruh foto terpilih..." />
+          </div>
+        </form>
+      </div>
+
+      <div class="sync-modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelBatchMetadataBtn">Batal</button>
+        <button type="button" class="btn btn-primary" id="saveBatchMetadataBtn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span id="saveBatchMetadataBtnText">Terapkan Perubahan</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating Mobile Grid Controller (Google Photos Style Quick-Switcher) -->
   <div class="mobile-grid-fab" id="mobileGridFab">
     <button type="button" class="grid-fab-btn" id="mobileGridPrevBtn" title="Perbesar Foto (Kurangi Kolom)">
@@ -1995,14 +2182,13 @@ CHANGELOG:
       <span class="mobile-nav-label">Foto</span>
     </button>
 
-    <button type="button" class="mobile-nav-item" id="mobileNavSearch" data-nav="search">
+    <button type="button" class="mobile-nav-item" id="mobileNavAlbums" data-nav="albums">
       <div class="mobile-nav-icon-wrap">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
         </svg>
       </div>
-      <span class="mobile-nav-label">Telusuri</span>
+      <span class="mobile-nav-label">Koleksi</span>
     </button>
 
     <button type="button" class="mobile-nav-item mobile-nav-upload-pill" id="mobileNavUpload" data-nav="upload" title="Unggah Foto / Buka Kamera">
@@ -2015,13 +2201,14 @@ CHANGELOG:
       <span class="mobile-nav-label">Unggah</span>
     </button>
 
-    <button type="button" class="mobile-nav-item" id="mobileNavTrips" data-nav="trips">
+    <button type="button" class="mobile-nav-item" id="mobileNavSearch" data-nav="search">
       <div class="mobile-nav-icon-wrap">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
       </div>
-      <span class="mobile-nav-label">Trip</span>
+      <span class="mobile-nav-label">Telusuri</span>
     </button>
 
     <button type="button" class="mobile-nav-item" id="mobileNavFavorites" data-nav="favorites">
@@ -2033,13 +2220,13 @@ CHANGELOG:
       <span class="mobile-nav-label">Favorit</span>
     </button>
 
-    <button type="button" class="mobile-nav-item hidden-mobile" id="mobileNavAlbums" data-nav="albums">
+    <button type="button" class="mobile-nav-item hidden-mobile" id="mobileNavTrips" data-nav="trips">
       <div class="mobile-nav-icon-wrap">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.3c.4-.2.6-.6.5-1.1z"/>
         </svg>
       </div>
-      <span class="mobile-nav-label">Koleksi</span>
+      <span class="mobile-nav-label">Trip</span>
     </button>
 
     <button type="button" class="mobile-nav-item hidden-mobile" id="mobileNavStorage" data-nav="storage">
@@ -2272,6 +2459,58 @@ CHANGELOG:
       <!-- Touch Tap Navigation Zones (Left: Previous, Right: Next) -->
       <div class="stories-touch-zone stories-touch-left" id="storiesPrevTouchArea" title="Ketuk untuk foto sebelumnya"></div>
       <div class="stories-touch-zone stories-touch-right" id="storiesNextTouchArea" title="Ketuk untuk foto berikutnya"></div>
+    </div>
+  </div>
+
+  <!-- Cinematic Highlight Reel Player (Google Photos Auto-Story) -->
+  <div class="stories-modal-wrapper highlight-reel-wrapper hidden" id="highlightReelModalWrapper">
+    <div class="stories-modal-backdrop" id="highlightReelBackdrop"></div>
+    <div class="stories-modal-card highlight-reel-card">
+      <!-- Continuous Progress Line -->
+      <div class="highlight-progress-bar">
+        <div class="highlight-progress-fill" id="highlightProgressFill"></div>
+      </div>
+
+      <!-- Header Overlay -->
+      <div class="stories-header highlight-reel-header">
+        <div class="stories-info-wrap">
+          <span class="stories-year-badge highlight-badge">🎬 SOROTAN KENANGAN</span>
+          <div class="stories-meta-text">
+            <span class="stories-title" id="highlightTitle">Koleksi Kenangan Terbaik</span>
+            <span class="stories-date" id="highlightSubtitle">Memutar foto-foto pilihan</span>
+          </div>
+        </div>
+        <div class="highlight-controls">
+          <button type="button" class="stories-close-btn" id="highlightPlayPauseBtn" title="Jeda / Putar">
+            <svg id="highlightPlayIcon" class="hidden" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <svg id="highlightPauseIcon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16"></rect>
+              <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+          </button>
+          <button type="button" class="stories-close-btn" id="highlightCloseBtn" title="Tutup (Esc)">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Ken Burns Cinematic Media Container -->
+      <div class="stories-media-container highlight-media-container" id="highlightMediaContainer"></div>
+
+      <!-- Photo Caption Overlay -->
+      <div class="highlight-caption-overlay" id="highlightCaptionOverlay">
+        <span class="highlight-caption-date" id="highlightCaptionDate"></span>
+        <span class="highlight-caption-place" id="highlightCaptionPlace"></span>
+      </div>
+
+      <!-- Touch Zones -->
+      <div class="stories-touch-zone stories-touch-left" id="highlightPrevTouchArea" title="Foto Sebelumnya"></div>
+      <div class="stories-touch-zone stories-touch-right" id="highlightNextTouchArea" title="Foto Berikutnya"></div>
     </div>
   </div>
 

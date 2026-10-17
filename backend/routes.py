@@ -35,6 +35,10 @@ from backend.database import (
     get_db_connection,
     get_all_embeddings,
     get_category_counts,
+    get_smart_collection_counts,
+    get_all_people,
+    get_person_photos,
+    rename_person,
     get_library_stats,
     get_storage_analytics,
     get_photo_by_id,
@@ -66,6 +70,7 @@ from backend.database import (
     get_locked_count,
     update_photo_ocr,
     update_photo_metadata,
+    batch_update_photo_metadata,
     upsert_photo,
     has_pin_configured,
     set_pin,
@@ -238,6 +243,17 @@ class UpdateMetadataRequest(BaseModel):
     description: Optional[str] = Field(None, description="Caption or description of the photo")
 
 
+class BatchUpdateMetadataRequest(BaseModel):
+    photo_ids: List[int] = Field(..., min_length=1, description="List of photo IDs to update")
+    date_mode: Optional[str] = Field(None, pattern=r"^(set|shift|none)$", description="Date mode: set, shift, or none")
+    new_datetime: Optional[str] = Field(None, description="ISO timestamp or date string to set")
+    shift_hours: Optional[float] = Field(None, description="Number of hours to shift timestamps (+/-)")
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0, description="GPS Latitude")
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0, description="GPS Longitude")
+    location_label: Optional[str] = Field(None, description="Custom location text or place name")
+    description: Optional[str] = Field(None, description="Caption or description of the photos")
+
+
 # ==============================================================================
 # Global WebSocket Connection Manager
 # ==============================================================================
@@ -359,8 +375,9 @@ def list_photos(
     is_favorite: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     ids: Optional[str] = Query(None, description="Comma-separated photo IDs"),
-    sort_order: str = Query("desc", regex="^(asc|desc|ASC|DESC)$", description="Sort order: desc (newest first) or asc (oldest first)"),
-    aspect_ratio: Optional[str] = Query(None, regex="^(landscape|portrait|square)$", description="Aspect ratio filter: landscape, portrait, square"),
+    sort_order: str = Query("desc", pattern="^(asc|desc|ASC|DESC)$", description="Sort order: desc (newest first) or asc (oldest first)"),
+    aspect_ratio: Optional[str] = Query(None, pattern="^(landscape|portrait|square)$", description="Aspect ratio filter: landscape, portrait, square"),
+
     limit: int = Query(80, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -401,8 +418,9 @@ def api_get_trash_count():
 
 
 @api_router.post("/api/photos/delete", response_model=DeleteActionResponse, tags=["Trash"], summary="Delete Photos")
-def api_delete_photos(req: DeletePhotosRequest):
+def api_delete_photos(req: DeletePhotosRequest, request: Request):
     """Moves photos to Trash (soft delete) or deletes from disk if requested."""
+    require_admin_permission(request)
     if req.delete_from_disk:
         return delete_photos_from_disk_and_db(req.photo_ids)
     count = delete_photos(req.photo_ids)
@@ -410,21 +428,24 @@ def api_delete_photos(req: DeletePhotosRequest):
 
 
 @api_router.post("/api/photos/restore", response_model=RestoreActionResponse, tags=["Trash"], summary="Restore Photos")
-def api_restore_photos(req: RestorePhotosRequest):
+def api_restore_photos(req: RestorePhotosRequest, request: Request):
     """Restores soft-deleted photos back to the active library."""
+    require_admin_permission(request)
     count = restore_photos(req.photo_ids)
     return {"success": True, "restored_count": count, "photo_ids": req.photo_ids}
 
 
 @api_router.post("/api/photos/delete-permanent", response_model=DeleteActionResponse, tags=["Trash"], summary="Permanently Purge Photos")
-def api_permanent_delete_photos(req: DeletePhotosRequest):
+def api_permanent_delete_photos(req: DeletePhotosRequest, request: Request):
     """Permanently deletes photos from disk (media file, companion JSON, thumbnail) and database."""
+    require_admin_permission(request)
     return delete_photos_from_disk_and_db(req.photo_ids)
 
 
 @api_router.post("/api/photos/trash/empty", response_model=DeleteActionResponse, tags=["Trash"], summary="Empty Entire Trash")
-def api_empty_trash():
+def api_empty_trash(request: Request):
     """Permanently deletes all items currently in Trash from disk and database."""
+    require_admin_permission(request)
     with get_db_connection() as conn:
         rows = conn.execute("SELECT id FROM photos WHERE deleted = 1").fetchall()
         photo_ids = [r["id"] for r in rows]
@@ -823,11 +844,12 @@ class EditPhotoRequest(BaseModel):
 
 
 @api_router.post("/api/photos/{photo_id}/edit", tags=["Media"], summary="Apply Photo Edits")
-def api_edit_photo(photo_id: int, req: EditPhotoRequest):
+def api_edit_photo(photo_id: int, req: EditPhotoRequest, request: Request):
     """
     Applies image edits (crop, rotate, adjustments, auto-enhance) to a photo.
     Supports non-destructive 'save_as_copy' or atomic overwrite.
     """
+    require_admin_permission(request)
     photo = get_photo_by_id(photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -968,6 +990,82 @@ def get_categories():
     return {"categories": counts}
 
 
+@api_router.get("/api/collections/smart", tags=["Search & AI"], summary="Smart Curated Collections")
+def get_smart_collections():
+    """Returns auto-curated collections (documents, receipts, screenshots, food, nature, videos, favorites)."""
+    collections = get_smart_collection_counts()
+    return {"collections": collections}
+
+
+class RenamePersonRequest(BaseModel):
+    old_name: str = Field(..., min_length=1)
+    new_name: str = Field(..., min_length=1)
+
+
+@api_router.get("/api/people", tags=["People & Pets"], summary="List People / Faces")
+def api_get_people():
+    """Returns detected people and faces with photo count and cover thumbnail."""
+    people = get_all_people()
+    return {"total": len(people), "people": people}
+
+
+@api_router.get("/api/people/{person_name}/photos", tags=["People & Pets"], summary="Get Person Photos")
+def api_get_person_photos(person_name: str, limit: int = Query(60, ge=1, le=500), offset: int = Query(0, ge=0)):
+    """Returns photos featuring a specific person."""
+    photos = get_person_photos(person_name, limit, offset)
+    return {"person": person_name, "count": len(photos), "photos": photos}
+
+
+@api_router.post("/api/people/rename", tags=["People & Pets"], summary="Rename / Merge Person")
+def api_rename_person(req: RenamePersonRequest, request: Request):
+    """Renames or merges a person label across all photos."""
+    require_admin_permission(request)
+    updated = rename_person(req.old_name, req.new_name)
+    return {"success": True, "updated_photos": updated}
+
+
+@api_router.get("/api/memories/highlight-reel", tags=["Memories"], summary="Auto Highlight Reel")
+def api_get_highlight_reel(limit: int = Query(30, ge=5, le=100)):
+    """
+    Selects top memorable photos for cinematic highlight reel slideshow:
+    prioritizes favorites, high-resolution scenery/people, varied capture years/places.
+    """
+    with get_db_connection() as conn:
+        rows = conn.execute("""
+            SELECT id, filename, folder_year, media_type, width, height,
+                   taken_at, taken_formatted, location_label, city, country,
+                   description, thumbnail_path, is_favorite, ai_category, people
+            FROM photos
+            WHERE deleted = 0 AND is_locked = 0 AND media_type = 'image'
+            ORDER BY is_favorite DESC, (CASE WHEN has_geo = 1 THEN 1 ELSE 0 END) DESC, taken_at DESC
+            LIMIT ?;
+        """, (limit * 2,)).fetchall()
+
+    items = [dict(r) for r in rows]
+    # Sample items to provide variety
+    seen_years = set()
+    diverse_selection = []
+    overflow = []
+    for item in items:
+        y = str(item.get("taken_year") or "")
+        if y not in seen_years:
+            seen_years.add(y)
+            diverse_selection.append(item)
+        else:
+            overflow.append(item)
+
+    while len(diverse_selection) < limit and overflow:
+        diverse_selection.append(overflow.pop(0))
+
+    return {
+        "title": "Sorotan Kenangan",
+        "subtitle": "Koleksi foto pilihan otomatis",
+        "count": len(diverse_selection),
+        "photos": diverse_selection,
+        "highlights": diverse_selection
+    }
+
+
 @api_router.get("/api/stats", response_model=StatsResponse, tags=["System"], summary="Library Stats")
 def get_stats():
     """Returns general library statistics."""
@@ -1012,6 +1110,16 @@ def scan_status() -> Dict[str, Any]:
     return scanner.get_status()
 
 
+@api_router.post("/api/scan/sync", tags=["Scanner"], summary="Sync New Media Files")
+def api_sync_new_media():
+    """Triggers background incremental sync for newly discovered media files."""
+    import threading
+    from backend.scanner import sync_missing_media
+    threading.Thread(target=sync_missing_media, daemon=True, name="ManualSyncThread").start()
+    return {"success": True, "message": "Incremental background sync started."}
+
+
+
 # ==============================================================================
 # Geolocation Points & Backfill Route
 # ==============================================================================
@@ -1050,10 +1158,11 @@ def api_get_duplicates(limit_groups: int = Query(50, ge=1, le=200)):
 
 
 @api_router.post("/api/duplicates/cleanup", tags=["Deduplication"], summary="Clean Up Duplicates")
-def api_cleanup_duplicates(req: DuplicateCleanupRequest):
+def api_cleanup_duplicates(req: DuplicateCleanupRequest, request: Request):
     """
     Trashes or permanently purges chosen duplicate photos.
     """
+    require_admin_permission(request)
     if req.hard_delete:
         return delete_photos_from_disk_and_db(req.photo_ids)
     count = delete_photos(req.photo_ids)
@@ -1100,15 +1209,17 @@ def api_get_album_photos(
 
 
 @api_router.delete("/api/albums/{album_id}/photos", response_model=AlbumMutationResponse, tags=["Albums"], summary="Remove Photos from Album")
-def api_remove_photos_from_album(album_id: int, req: DeletePhotosRequest):
+def api_remove_photos_from_album(album_id: int, req: DeletePhotosRequest, request: Request):
     """Removes selected photos from an album."""
+    require_admin_permission(request)
     count = remove_photos_from_album(album_id, req.photo_ids)
     return {"success": True, "removed_count": count}
 
 
 @api_router.delete("/api/albums/{album_id}", response_model=SimpleSuccessResponse, tags=["Albums"], summary="Delete Album")
-def api_delete_album(album_id: int):
+def api_delete_album(album_id: int, request: Request):
     """Deletes an entire album (does not delete the original photos)."""
+    require_admin_permission(request)
     success = delete_album(album_id)
     if not success:
         raise HTTPException(status_code=404, detail="Album not found")
@@ -1193,12 +1304,38 @@ def is_valid_unlocked_token(token: Optional[str]) -> bool:
     return True
 
 
+def check_admin_permission(request: Request) -> bool:
+    """
+    Evaluates whether the request is allowed to perform admin/mutative operations.
+    Host machine (localhost) is always admin.
+    Non-localhost requests (LAN) require a valid token if a security PIN is configured.
+    """
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if client_ip in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+
+    token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+    if is_valid_unlocked_token(token):
+        return True
+
+    return False
+
+
+def require_admin_permission(request: Request) -> None:
+    """Raises HTTP 403 Forbidden if the request does not have admin privileges."""
+    if not check_admin_permission(request):
+        raise HTTPException(
+            status_code=403,
+            detail="Aksi dibatasi dalam Mode Tamu (Read-Only). Masukkan PIN Admin untuk melanjutkan."
+        )
+
+
 class PinSetupRequest(BaseModel):
-    pin: str = Field(..., min_length=4, max_length=4, pattern=r"^\d{4}$", description="4-digit numeric security PIN")
+    pin: str = Field(..., min_length=4, max_length=8, pattern=r"^\d{4,8}$", description="4 to 8 digit numeric security PIN")
 
 
 class PinVerifyRequest(BaseModel):
-    pin: str = Field(..., min_length=4, max_length=4, pattern=r"^\d{4}$", description="4-digit numeric security PIN")
+    pin: str = Field(..., min_length=4, max_length=8, pattern=r"^\d{4,8}$", description="4 to 8 digit numeric security PIN")
 
 
 class LockPhotosRequest(BaseModel):
@@ -1208,6 +1345,32 @@ class LockPhotosRequest(BaseModel):
 class UnlockPhotosRequest(BaseModel):
     photo_ids: List[int] = Field(..., min_length=1)
     token: str = Field(...)
+
+
+@api_router.get("/api/system/access-mode", tags=["System"], summary="Get Access Mode")
+def api_get_access_mode(request: Request):
+    """Returns current client access mode (localhost admin vs LAN guest)."""
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    is_local = client_ip in ("127.0.0.1", "::1", "localhost", "testclient")
+    is_admin = check_admin_permission(request)
+    return {
+        "is_localhost": is_local,
+        "is_admin": is_admin,
+        "guest_mode_enabled": not is_local,
+        "has_pin": True,
+        "client_ip": client_ip,
+    }
+
+
+@api_router.post("/api/system/unlock-admin", tags=["System"], summary="Unlock Admin Mode on LAN")
+def api_unlock_admin(req: PinVerifyRequest):
+    """Verifies security PIN and grants Admin privileges to the LAN client for 1 hour."""
+    if not verify_pin(req.pin):
+        raise HTTPException(status_code=401, detail="PIN yang Anda masukkan salah.")
+
+    token = hashlib.sha256(f"admin:{req.pin}:{time.time()}:{os.urandom(16)}".encode("utf-8")).hexdigest()[:32]
+    _active_unlocked_tokens[token] = time.time() + (60 * 60)
+    return {"success": True, "token": token, "expires_in": 3600}
 
 
 @api_router.get("/api/locked/status", tags=["Locked Folder"], summary="Get Locked Folder Status")
@@ -1221,28 +1384,26 @@ def api_get_locked_status():
 
 @api_router.post("/api/locked/setup-pin", tags=["Locked Folder"], summary="Setup Security PIN")
 def api_setup_pin(req: PinSetupRequest):
-    """Sets initial 4-digit PIN for the locked folder."""
-    if has_pin_configured():
-        raise HTTPException(status_code=400, detail="PIN sudah pernah dibuat.")
+    """Sets security PIN for the locked folder."""
     set_pin(req.pin)
-    return {"success": True, "message": "PIN keamanan berhasil dibuat."}
+    return {"success": True, "message": "PIN keamanan berhasil disimpan."}
 
 
 @api_router.post("/api/locked/verify-pin", tags=["Locked Folder"], summary="Verify PIN and Unlock")
 def api_verify_pin(req: PinVerifyRequest):
-    """Verifies security PIN and returns a temporary 15-minute access token."""
+    """Verifies security PIN and returns a temporary 1-hour access token."""
     if not verify_pin(req.pin):
         raise HTTPException(status_code=401, detail="PIN yang Anda masukkan salah.")
 
-    import hashlib
     token = hashlib.sha256(f"{req.pin}:{time.time()}:{os.urandom(16)}".encode("utf-8")).hexdigest()[:32]
-    _active_unlocked_tokens[token] = time.time() + (15 * 60)
-    return {"success": True, "token": token, "expires_in": 900}
+    _active_unlocked_tokens[token] = time.time() + (60 * 60)
+    return {"success": True, "token": token, "expires_in": 3600}
 
 
 @api_router.post("/api/photos/lock", tags=["Locked Folder"], summary="Lock Photos")
-def api_lock_photos(req: LockPhotosRequest):
+def api_lock_photos(req: LockPhotosRequest, request: Request):
     """Moves photos to the Locked Folder (hidden from main timeline, map, and memories)."""
+    require_admin_permission(request)
     count = lock_photos(req.photo_ids)
     return {"success": True, "locked_count": count}
 
@@ -1485,11 +1646,12 @@ def api_download_album_zip(album_id: int):
 # Manual Metadata & Location Editor
 # ==============================================================================
 @api_router.post("/api/photos/{photo_id}/metadata", tags=["Media"], summary="Update Photo Metadata & Location")
-def api_update_photo_metadata(photo_id: int, req: UpdateMetadataRequest):
+def api_update_photo_metadata(photo_id: int, req: UpdateMetadataRequest, request: Request):
     """
     Manually edits incorrect capture date/time, GPS coordinates, location label, or caption.
     Automatically resolves offline reverse geocoding if coordinates are provided without label.
     """
+    require_admin_permission(request)
     photo = get_photo_by_id(photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="Foto tidak ditemukan.")
@@ -1513,4 +1675,37 @@ def api_update_photo_metadata(photo_id: int, req: UpdateMetadataRequest):
 
     updated_photo = get_photo_by_id(photo_id)
     return {"success": True, "photo": updated_photo}
+
+
+@api_router.post("/api/photos/batch-metadata", tags=["Media"], summary="Batch Update Photos Metadata & Location")
+def api_batch_update_photo_metadata(req: BatchUpdateMetadataRequest, request: Request):
+    """
+    Batch edits capture date/time (override or shift hours), GPS coordinates, or description for multiple photos.
+    Automatically resolves offline reverse geocoding if coordinates are provided without label.
+    """
+    require_admin_permission(request)
+
+    location_label = req.location_label
+    city = None
+    country = None
+    if (req.latitude is not None and req.longitude is not None) and not location_label:
+        geo = resolve_location(req.latitude, req.longitude)
+        if geo:
+            location_label = geo.get("location_label")
+            city = geo.get("city")
+            country = geo.get("country")
+
+    updated_count = batch_update_photo_metadata(
+        photo_ids=req.photo_ids,
+        date_mode=req.date_mode,
+        new_datetime=req.new_datetime,
+        shift_hours=req.shift_hours,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        location_label=location_label,
+        city=city,
+        country=country,
+        description=req.description,
+    )
+    return {"success": True, "updated_count": updated_count, "photo_ids": req.photo_ids}
 

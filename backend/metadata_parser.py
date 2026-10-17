@@ -276,7 +276,20 @@ def parse_photo_metadata(media_path: Path, fallback_year: Optional[int] = None) 
     month = dt.month
     day = dt.day
 
+    # Custom Takeout album overrides: THE WEEKND concert date is September 27, 2026
+    if parent_name.strip().upper() == "THE WEEKND":
+        year = 2026
+        month = 9
+        day = 27
+        try:
+            dt = dt.replace(year=2026, month=9, day=27)
+        except Exception:
+            dt = datetime(2026, 9, 27, 12, 0, 0)
+        taken_timestamp = int(dt.timestamp())
+        taken_formatted = dt.strftime("%b %d, %Y, %I:%M:%S %p")
+
     # If inside a year archive (Photos from YYYY), ensure year alignment
+
     if parent_folder_year is not None and year != parent_folder_year:
         # Check if UTC time resolves the boundary (e.g. Dec 31 UTC vs Jan 1 local)
         try:

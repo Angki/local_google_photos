@@ -13,6 +13,37 @@
 (function () {
   "use strict";
 
+  // Global fetch interceptor to attach X-Admin-Token and intercept LAN Guest restrictions
+  const originalFetch = window.fetch;
+  window.fetch = async function (input, init) {
+    init = init || {};
+    const adminToken = sessionStorage.getItem("admin_token");
+    if (adminToken) {
+      init.headers = init.headers || {};
+      if (init.headers instanceof Headers) {
+        if (!init.headers.has("X-Admin-Token")) {
+          init.headers.append("X-Admin-Token", adminToken);
+        }
+      } else if (Array.isArray(init.headers)) {
+        init.headers.push(["X-Admin-Token", adminToken]);
+      } else {
+        init.headers["X-Admin-Token"] = adminToken;
+      }
+    }
+    const response = await originalFetch.call(this, input, init);
+    if (response.status === 403) {
+      try {
+        const clone = response.clone();
+        const data = await clone.json();
+        if (data && data.detail && data.detail.includes("Mode Tamu")) {
+          if (typeof showToast === "function") showToast(data.detail, 4000);
+          if (typeof openAdminPinModal === "function") openAdminPinModal();
+        }
+      } catch (e) {}
+    }
+    return response;
+  };
+
   // State
   const state = {
     timeline: [],
@@ -50,6 +81,10 @@
     lockedPinInput: "",
     isPinSetupMode: false,
     pinSetupFirstPass: "",
+    isAdmin: false,
+    isLocalhost: true,
+    isPinAdminElevation: false,
+    pendingAdminAction: null,
     sortOrder: "desc",
     aspectRatio: null,
     zoomLevel: 1,
@@ -77,6 +112,9 @@
     clearSearchBtn: document.getElementById("clearSearchBtn"),
     searchBadge: document.getElementById("searchBadge"),
     searchSuggestions: document.getElementById("searchSuggestions"),
+    adminAccessPill: document.getElementById("adminAccessPill"),
+    adminPillIcon: document.getElementById("adminPillIcon"),
+    adminPillText: document.getElementById("adminPillText"),
     syncPill: document.getElementById("syncPill"),
     syncIndicator: document.getElementById("syncIndicator"),
     syncText: document.getElementById("syncText"),
@@ -258,6 +296,7 @@
     duplicatesSelectedCount: document.getElementById("duplicatesSelectedCount"),
     duplicatesGroupsList: document.getElementById("duplicatesGroupsList"),
     duplicatesEmptyState: document.getElementById("duplicatesEmptyState"),
+    duplicatesFilterRow: document.getElementById("duplicatesFilterRow"),
 
     // Live Photo (Fase 3)
     lightboxLiveBtn: document.getElementById("lightboxLiveBtn"),
@@ -436,6 +475,8 @@
     pinDot1: document.getElementById("pinDot1"),
     pinDot2: document.getElementById("pinDot2"),
     pinDot3: document.getElementById("pinDot3"),
+    pinDot4: document.getElementById("pinDot4"),
+    pinDot5: document.getElementById("pinDot5"),
     pinErrorText: document.getElementById("pinErrorText"),
     keypadClearBtn: document.getElementById("keypadClearBtn"),
     keypadBackspaceBtn: document.getElementById("keypadBackspaceBtn"),
@@ -487,6 +528,30 @@
     metadataMapPicker: document.getElementById("metadataMapPicker"),
     cancelMetadataBtn: document.getElementById("cancelMetadataBtn"),
     saveMetadataBtn: document.getElementById("saveMetadataBtn"),
+
+    // Batch Metadata & Location Editor
+    batchEditMetadataBtn: document.getElementById("batchEditMetadataBtn"),
+    batchMetadataModalWrapper: document.getElementById("batchMetadataModalWrapper"),
+    batchMetadataModalBackdrop: document.getElementById("batchMetadataModalBackdrop"),
+    batchMetadataCloseBtn: document.getElementById("batchMetadataCloseBtn"),
+    batchCountBadge: document.getElementById("batchCountBadge"),
+    batchMetadataForm: document.getElementById("batchMetadataForm"),
+    batchDateModeNone: document.getElementById("batchDateModeNone"),
+    batchDateModeSet: document.getElementById("batchDateModeSet"),
+    batchDateModeShift: document.getElementById("batchDateModeShift"),
+    batchDateSetGroup: document.getElementById("batchDateSetGroup"),
+    batchDateShiftGroup: document.getElementById("batchDateShiftGroup"),
+    batchNewDatetimeInput: document.getElementById("batchNewDatetimeInput"),
+    batchShiftHoursInput: document.getElementById("batchShiftHoursInput"),
+    batchLocationLabelInput: document.getElementById("batchLocationLabelInput"),
+    batchLatitudeInput: document.getElementById("batchLatitudeInput"),
+    batchLongitudeInput: document.getElementById("batchLongitudeInput"),
+    batchClearPinBtn: document.getElementById("batchClearPinBtn"),
+    batchMetadataMapPicker: document.getElementById("batchMetadataMapPicker"),
+    batchDescriptionInput: document.getElementById("batchDescriptionInput"),
+    cancelBatchMetadataBtn: document.getElementById("cancelBatchMetadataBtn"),
+    saveBatchMetadataBtn: document.getElementById("saveBatchMetadataBtn"),
+    saveBatchMetadataBtnText: document.getElementById("saveBatchMetadataBtnText"),
     // Phase 12: Lightbox Zoom & Pan, Quick Rotate, Comparison Slider & Sort/Aspect
     comparePhotosBtn: document.getElementById("comparePhotosBtn"),
     sortOrderToggleBtn: document.getElementById("sortOrderToggleBtn"),
@@ -532,6 +597,33 @@
     compareKeepABtn: document.getElementById("compareKeepABtn"),
     compareKeepBBtn: document.getElementById("compareKeepBBtn"),
     compareCloseFooterBtn: document.getElementById("compareCloseFooterBtn"),
+
+    // Feature 1 & 2: Smart Collections & People
+    peopleChip: document.getElementById("peopleChip"),
+    peopleBadgeCount: document.getElementById("peopleBadgeCount"),
+    peopleContainer: document.getElementById("peopleContainer"),
+    peopleBackBtn: document.getElementById("peopleBackBtn"),
+    peopleCountBadge: document.getElementById("peopleCountBadge"),
+    peopleGrid: document.getElementById("peopleGrid"),
+    peopleEmptyState: document.getElementById("peopleEmptyState"),
+
+    // Feature 4: Cinematic Highlight Reel Player
+    playHighlightReelBtn: document.getElementById("playHighlightReelBtn"),
+    highlightReelModalWrapper: document.getElementById("highlightReelModalWrapper"),
+    highlightReelBackdrop: document.getElementById("highlightReelBackdrop"),
+    highlightProgressFill: document.getElementById("highlightProgressFill"),
+    highlightTitle: document.getElementById("highlightTitle"),
+    highlightSubtitle: document.getElementById("highlightSubtitle"),
+    highlightPlayPauseBtn: document.getElementById("highlightPlayPauseBtn"),
+    highlightPlayIcon: document.getElementById("highlightPlayIcon"),
+    highlightPauseIcon: document.getElementById("highlightPauseIcon"),
+    highlightCloseBtn: document.getElementById("highlightCloseBtn"),
+    highlightMediaContainer: document.getElementById("highlightMediaContainer"),
+    highlightCaptionOverlay: document.getElementById("highlightCaptionOverlay"),
+    highlightCaptionDate: document.getElementById("highlightCaptionDate"),
+    highlightCaptionPlace: document.getElementById("highlightCaptionPlace"),
+    highlightPrevTouchArea: document.getElementById("highlightPrevTouchArea"),
+    highlightNextTouchArea: document.getElementById("highlightNextTouchArea"),
   };
 
   // --------------------------------------------------------------------------
@@ -561,6 +653,12 @@
     initLightboxQuickRotate();
     initPhotoComparison();
     initSortAndAspectFilters();
+    checkSystemAccessMode();
+    initBatchMetadataEditor();
+    initSmartCollections();
+    initPeopleCluster();
+    initHighlightReelPlayer();
+    initProgressivePreloader();
     fetchPhotos(true);
   }
 
@@ -2071,6 +2169,14 @@
         hideDuplicatesView();
         hideTripsView();
         openLockedFolderWithPin();
+      } else if (state.currentCategory === "people") {
+        hideTrashView();
+        hideAlbumView();
+        hidePhotoMapView();
+        hideDuplicatesView();
+        hideLockedView();
+        hideTripsView();
+        showPeopleView();
       } else if (state.currentCategory === "storage") {
         openStorageModal();
         document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
@@ -2084,6 +2190,7 @@
         hideDuplicatesView();
         hideLockedView();
         hideTripsView();
+        hidePeopleView();
         fetchPhotos(true);
       }
     });
@@ -2703,6 +2810,46 @@
       btn.addEventListener("click", () => handlePinDigit(btn.dataset.key));
     });
 
+    if (elements.adminAccessPill) {
+      elements.adminAccessPill.addEventListener("click", () => {
+        if (state.isAdmin) {
+          if (confirm("Kunci kembali ke Mode Tamu (Read-Only)?")) {
+            sessionStorage.removeItem("admin_token");
+            state.isAdmin = false;
+            state.lockedToken = null;
+            updateAdminPill(false);
+            showToast("Beralih ke Mode Tamu (Read-Only) 🔒");
+          }
+        } else {
+          openAdminPinModal();
+        }
+      });
+    }
+
+    // Keyboard support for 6-digit PIN modal
+    window.addEventListener("keydown", (e) => {
+      if (elements.pinModalWrapper && !elements.pinModalWrapper.classList.contains("hidden")) {
+        if (e.key >= "0" && e.key <= "9") {
+          handlePinDigit(e.key);
+        } else if (e.key === "Backspace") {
+          handlePinBackspace();
+        } else if (e.key === "Escape") {
+          closePinModal();
+        }
+      }
+    });
+
+    // Duplicates category filter chips (Semua, 100% Identik, Visual Serupa pHash, Burst)
+    if (elements.duplicatesFilterRow) {
+      elements.duplicatesFilterRow.querySelectorAll(".dup-filter-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          elements.duplicatesFilterRow.querySelectorAll(".dup-filter-chip").forEach((c) => c.classList.remove("active"));
+          chip.classList.add("active");
+          renderDuplicateGroups(chip.dataset.filter);
+        });
+      });
+    }
+
     // --- OCR / Live Text Events (Phase 9) ---
     if (elements.lightboxOcrBtn) {
       elements.lightboxOcrBtn.addEventListener("click", triggerPhotoOcr);
@@ -2881,10 +3028,12 @@
         if (elements.restoreSelectedBtn) elements.restoreSelectedBtn.classList.remove("hidden");
         if (elements.permanentDeleteSelectedBtn) elements.permanentDeleteSelectedBtn.classList.remove("hidden");
         if (elements.lockSelectedBtn) elements.lockSelectedBtn.classList.add("hidden");
+        if (elements.batchEditMetadataBtn) elements.batchEditMetadataBtn.classList.add("hidden");
       } else {
         if (elements.addToAlbumBtn) elements.addToAlbumBtn.classList.remove("hidden");
         if (elements.deleteSelectedBtn) elements.deleteSelectedBtn.classList.remove("hidden");
         if (elements.favoriteSelectedBtn) elements.favoriteSelectedBtn.classList.remove("hidden");
+        if (elements.batchEditMetadataBtn) elements.batchEditMetadataBtn.classList.remove("hidden");
         if (elements.createCollageBtn) {
           elements.createCollageBtn.classList.toggle("hidden", count < 2 || count > 6);
         }
@@ -3288,77 +3437,104 @@
         elements.duplicatesBadgeCount.classList.remove("hidden");
       }
 
-      elements.duplicatesGroupsList.innerHTML = "";
-      groups.forEach((group, gIdx) => {
-        const groupCard = document.createElement("div");
-        groupCard.className = "duplicate-group-card";
-
-        const isExact = (group.type === "exact_duplicate" || group.group_type === "exact_duplicate");
-        const badgeClass = isExact ? "dup-group-badge" : "dup-group-badge near_duplicate";
-        const badgeText = isExact ? "100% IDENTIK" : "FOTO SERUPA / BURST";
-        const savableGroupBytes = group.savable_bytes || group.potential_savings_bytes || 0;
-
-        groupCard.innerHTML = `
-          <div class="dup-group-header">
-            <div class="dup-group-meta">
-              <span class="${badgeClass}">${badgeText}</span>
-              <span class="dup-group-reason">${escapeHtml(group.reason)}</span>
-            </div>
-            <span class="dup-savings-badge">Hemat ${formatBytes(savableGroupBytes)}</span>
-          </div>
-          <div class="dup-photos-grid" id="dupGroupGrid_${gIdx}"></div>
-        `;
-
-        const grid = groupCard.querySelector(`#dupGroupGrid_${gIdx}`);
-        group.photos.forEach((photo, pIdx) => {
-          const isBest = pIdx === 0;
-          const photoCard = document.createElement("div");
-          photoCard.className = `dup-photo-card ${isBest ? "recommended-keep" : ""}`;
-          photoCard.setAttribute("data-photo-id", photo.id);
-
-          photoCard.innerHTML = `
-            <div class="dup-photo-thumb-wrap">
-              <span class="dup-tag-pill ${isBest ? "best" : "copy"}">${isBest ? "BEST" : "COPY"}</span>
-              <div class="dup-checkbox-wrap">
-                <input type="checkbox" class="dup-check" data-id="${photo.id}" ${isBest ? "disabled" : ""} />
-              </div>
-              <img src="/api/thumbnails/${photo.id}" loading="lazy" alt="${escapeHtml(photo.filename)}" onerror="this.src='/api/media/${photo.id}'" />
-            </div>
-            <div class="dup-photo-info">
-              <span class="dup-filename" title="${escapeHtml(photo.filename)}">${escapeHtml(photo.filename)}</span>
-              <span class="dup-dimensions">${photo.width || "?"}×${photo.height || "?"} • ${formatBytes(photo.file_size)}</span>
-            </div>
-          `;
-
-          const imgWrap = photoCard.querySelector(".dup-photo-thumb-wrap img");
-          imgWrap.addEventListener("click", () => {
-            state.photos = group.photos;
-            openLightbox(photo.id);
-          });
-
-          const checkbox = photoCard.querySelector(".dup-check");
-          if (!isBest) {
-            checkbox.addEventListener("change", (e) => {
-              if (e.target.checked) {
-                state.selectedDuplicates.add(photo.id);
-                photoCard.classList.add("selected");
-              } else {
-                state.selectedDuplicates.delete(photo.id);
-                photoCard.classList.remove("selected");
-              }
-              updateDuplicatesSelectedUI();
-            });
-          }
-
-          grid.appendChild(photoCard);
-        });
-
-        elements.duplicatesGroupsList.appendChild(groupCard);
-      });
+      renderDuplicateGroups("all");
     } catch (e) {
       console.error("Gagal memuat duplikat", e);
       elements.duplicatesGroupsList.innerHTML = '<div class="empty-state">Gagal memuat duplikat.</div>';
     }
+  }
+
+  function renderDuplicateGroups(filterType = "all") {
+    if (!elements.duplicatesGroupsList) return;
+    elements.duplicatesGroupsList.innerHTML = "";
+    const groups = state.duplicateGroups || [];
+
+    const filtered = groups.filter((g) => {
+      if (filterType === "all") return true;
+      if (filterType === "exact") return g.type === "exact" || g.type === "exact_duplicate" || g.group_type === "exact_duplicate";
+      if (filterType === "perceptual") return g.type === "perceptual" || g.group_type === "perceptual";
+      if (filterType === "near_duplicate") return g.type === "near_duplicate" || g.group_type === "near_duplicate";
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      elements.duplicatesGroupsList.innerHTML = '<div class="empty-state" style="margin-top: 30px;"><p>Tidak ada duplikat dalam kategori ini.</p></div>';
+      return;
+    }
+
+    filtered.forEach((group, gIdx) => {
+      const groupCard = document.createElement("div");
+      groupCard.className = "duplicate-group-card";
+
+      let badgeClass = "dup-group-badge";
+      let badgeText = "100% IDENTIK";
+      if (group.type === "perceptual" || group.group_type === "perceptual") {
+        badgeClass = "dup-group-badge perceptual";
+        badgeText = "VISUAL SERUPA (pHASH)";
+      } else if (group.type === "near_duplicate" || group.group_type === "near_duplicate") {
+        badgeClass = "dup-group-badge near_duplicate";
+        badgeText = "BURST SHOT";
+      }
+
+      const savableGroupBytes = group.savable_bytes || group.potential_savings_bytes || 0;
+
+      groupCard.innerHTML = `
+        <div class="dup-group-header">
+          <div class="dup-group-meta">
+            <span class="${badgeClass}">${badgeText}</span>
+            <span class="dup-group-reason">${escapeHtml(group.reason)}</span>
+          </div>
+          <span class="dup-savings-badge">Hemat ${formatBytes(savableGroupBytes)}</span>
+        </div>
+        <div class="dup-photos-grid" id="dupGroupGrid_${gIdx}"></div>
+      `;
+
+      const grid = groupCard.querySelector(`#dupGroupGrid_${gIdx}`);
+      group.photos.forEach((photo, pIdx) => {
+        const isBest = pIdx === 0;
+        const photoCard = document.createElement("div");
+        photoCard.className = `dup-photo-card ${isBest ? "recommended-keep" : ""}`;
+        photoCard.setAttribute("data-photo-id", photo.id);
+
+        photoCard.innerHTML = `
+          <div class="dup-photo-thumb-wrap">
+            <span class="dup-tag-pill ${isBest ? "best" : "copy"}">${isBest ? "BEST" : "COPY"}</span>
+            <div class="dup-checkbox-wrap">
+              <input type="checkbox" class="dup-check" data-id="${photo.id}" ${isBest ? "disabled" : ""} />
+            </div>
+            <img src="/api/thumbnails/${photo.id}" loading="lazy" alt="${escapeHtml(photo.filename)}" onerror="this.src='/api/media/${photo.id}'" />
+          </div>
+          <div class="dup-photo-info">
+            <span class="dup-filename" title="${escapeHtml(photo.filename)}">${escapeHtml(photo.filename)}</span>
+            <span class="dup-dimensions">${photo.width || "?"}×${photo.height || "?"} • ${formatBytes(photo.file_size)}</span>
+          </div>
+        `;
+
+        const imgWrap = photoCard.querySelector(".dup-photo-thumb-wrap img");
+        imgWrap.addEventListener("click", () => {
+          state.photos = group.photos;
+          openLightbox(photo.id);
+        });
+
+        const checkbox = photoCard.querySelector(".dup-check");
+        if (!isBest) {
+          checkbox.addEventListener("change", (e) => {
+            if (e.target.checked) {
+              state.selectedDuplicates.add(photo.id);
+              photoCard.classList.add("selected");
+            } else {
+              state.selectedDuplicates.delete(photo.id);
+              photoCard.classList.remove("selected");
+            }
+            updateDuplicatesSelectedUI();
+          });
+        }
+
+        grid.appendChild(photoCard);
+      });
+
+      elements.duplicatesGroupsList.appendChild(groupCard);
+    });
   }
 
   function updateDuplicatesSelectedUI() {
@@ -3805,7 +3981,8 @@
     elements.albumContainer.classList.remove("hidden");
     
     elements.albumTitle.textContent = "Semua Album";
-    elements.albumBackBtn.style.display = "none";
+    elements.albumBackBtn.style.display = "inline-flex";
+    elements.albumBackBtn.title = "Kembali ke Linimasa";
     elements.deleteAlbumBtn.style.display = "none";
     elements.albumGrid.innerHTML = '<div class="spinner-small" style="margin: 40px auto;"></div>';
     
@@ -3836,10 +4013,13 @@
     albums.forEach(album => {
       const card = document.createElement("div");
       card.className = "album-card";
+      const coverHtml = album.cover_photo_id 
+        ? `<div class="album-card-cover-wrapper"><img class="album-card-cover" src="/api/thumbnails/${album.cover_photo_id}" alt="${album.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"><div class="album-card-icon" style="display:none;">📁</div></div>`
+        : `<div class="album-card-icon">📁</div>`;
       card.innerHTML = `
-        <div class="album-card-icon">📁</div>
+        ${coverHtml}
         <h3 class="album-card-title">${album.name}</h3>
-        <div class="album-card-count">${album.photo_count || 0} foto</div>
+        <div class="album-card-count">${album.photo_count || 0} foto/video</div>
       `;
       card.addEventListener("click", () => openAlbum(album.id, album.name));
       elements.albumGrid.appendChild(card);
@@ -3881,7 +4061,11 @@
   }
 
   elements.albumBackBtn.addEventListener("click", () => {
-    showAlbumList();
+    if (currentAlbumId) {
+      showAlbumList();
+    } else {
+      hideAlbumView();
+    }
   });
 
   elements.deleteAlbumBtn.addEventListener("click", async () => {
@@ -4928,6 +5112,8 @@
       const res = await fetch("/api/locked/status");
       const data = await res.json();
 
+      state.isPinAdminElevation = false;
+      state.pendingAdminAction = null;
       state.isPinSetupMode = !data.has_pin;
       state.pinSetupFirstPass = "";
       state.lockedPinInput = "";
@@ -4935,10 +5121,10 @@
 
       if (state.isPinSetupMode) {
         elements.pinModalTitle.textContent = "Buat PIN Baru";
-        elements.pinModalSubtitle.textContent = "Tentukan 4-digit PIN untuk Folder Terkunci Anda";
+        elements.pinModalSubtitle.textContent = "Tentukan 6-digit PIN untuk Folder Terkunci Anda";
       } else {
         elements.pinModalTitle.textContent = "Buka Folder Terkunci";
-        elements.pinModalSubtitle.textContent = "Masukkan 4-digit PIN keamanan Anda";
+        elements.pinModalSubtitle.textContent = "Masukkan 6-digit PIN keamanan Anda";
       }
 
       elements.pinErrorText.classList.add("hidden");
@@ -4949,10 +5135,61 @@
     }
   }
 
+  function openAdminPinModal(pendingAction = null) {
+    state.isPinAdminElevation = true;
+    state.isPinSetupMode = false;
+    state.pendingAdminAction = pendingAction;
+    state.lockedPinInput = "";
+    updatePinDotsUI();
+
+    if (elements.pinModalTitle) elements.pinModalTitle.textContent = "Otorisasi PIN Admin";
+    if (elements.pinModalSubtitle) elements.pinModalSubtitle.textContent = "Masukkan 6-digit Master PIN untuk membuka akses penuh";
+    if (elements.pinErrorText) elements.pinErrorText.classList.add("hidden");
+    if (elements.pinModalWrapper) elements.pinModalWrapper.classList.remove("hidden");
+  }
+
+  function updateAdminPill(isAdmin) {
+    if (!elements.adminAccessPill) return;
+    if (state.isLocalhost) {
+      elements.adminAccessPill.classList.add("hidden");
+      return;
+    }
+    elements.adminAccessPill.classList.remove("hidden");
+    if (isAdmin) {
+      elements.adminAccessPill.classList.add("admin-mode");
+      elements.adminAccessPill.classList.remove("guest-mode");
+      if (elements.adminPillIcon) elements.adminPillIcon.textContent = "🔓";
+      if (elements.adminPillText) elements.adminPillText.textContent = "Admin";
+      elements.adminAccessPill.title = "Mode Admin Aktif (Akses Penuh). Klik untuk Kunci ke Mode Tamu.";
+    } else {
+      elements.adminAccessPill.classList.add("guest-mode");
+      elements.adminAccessPill.classList.remove("admin-mode");
+      if (elements.adminPillIcon) elements.adminPillIcon.textContent = "🔒";
+      if (elements.adminPillText) elements.adminPillText.textContent = "Mode Tamu";
+      elements.adminAccessPill.title = "Akses Terbatas (Read-Only). Klik untuk Masukkan PIN Admin.";
+    }
+  }
+
+  async function checkSystemAccessMode() {
+    try {
+      const res = await fetch("/api/system/access-mode");
+      if (res.ok) {
+        const data = await res.json();
+        state.isLocalhost = !!data.is_localhost;
+        state.isAdmin = !!data.is_admin;
+        updateAdminPill(state.isAdmin);
+      }
+    } catch (e) {
+      console.debug("Access mode check skipped:", e);
+    }
+  }
+
   function closePinModal() {
     if (elements.pinModalWrapper) {
       elements.pinModalWrapper.classList.add("hidden");
     }
+    state.isPinAdminElevation = false;
+    state.pendingAdminAction = null;
     state.lockedPinInput = "";
     state.pinSetupFirstPass = "";
     updatePinDotsUI();
@@ -4968,7 +5205,7 @@
 
   function updatePinDotsUI() {
     const len = state.lockedPinInput.length;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const dot = document.getElementById(`pinDot${i}`);
       if (dot) {
         dot.classList.toggle("filled", i < len);
@@ -4977,12 +5214,12 @@
   }
 
   async function handlePinDigit(digit) {
-    if (state.lockedPinInput.length >= 4) return;
+    if (state.lockedPinInput.length >= 6) return;
     state.lockedPinInput += digit;
     updatePinDotsUI();
     elements.pinErrorText.classList.add("hidden");
 
-    if (state.lockedPinInput.length === 4) {
+    if (state.lockedPinInput.length === 6) {
       await processCompletedPin();
     }
   }
@@ -5002,13 +5239,52 @@
   async function processCompletedPin() {
     const enteredPin = state.lockedPinInput;
 
+    // Mode 1: Admin Elevation (from LAN Guest Pill or 403 Forbidden prompt)
+    if (state.isPinAdminElevation) {
+      try {
+        const res = await fetch("/api/system/unlock-admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: enteredPin })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+          sessionStorage.setItem("admin_token", data.token);
+          state.isAdmin = true;
+          updateAdminPill(true);
+          elements.pinModalWrapper.classList.add("hidden");
+          state.isPinAdminElevation = false;
+          state.lockedPinInput = "";
+          updatePinDotsUI();
+          showToast("Mode Admin Berhasil Diaktifkan! 🔓");
+          if (typeof state.pendingAdminAction === "function") {
+            const action = state.pendingAdminAction;
+            state.pendingAdminAction = null;
+            action();
+          }
+        } else {
+          elements.pinErrorText.textContent = data.detail || "PIN salah. Silakan coba lagi.";
+          elements.pinErrorText.classList.remove("hidden");
+          state.lockedPinInput = "";
+          updatePinDotsUI();
+        }
+      } catch (e) {
+        elements.pinErrorText.textContent = "Gagal memverifikasi PIN Admin.";
+        elements.pinErrorText.classList.remove("hidden");
+        state.lockedPinInput = "";
+        updatePinDotsUI();
+      }
+      return;
+    }
+
+    // Mode 2: PIN Setup Mode (if ever triggered)
     if (state.isPinSetupMode) {
       if (!state.pinSetupFirstPass) {
         state.pinSetupFirstPass = enteredPin;
         state.lockedPinInput = "";
         updatePinDotsUI();
         elements.pinModalTitle.textContent = "Konfirmasi PIN";
-        elements.pinModalSubtitle.textContent = "Masukkan 4-digit PIN sekali lagi";
+        elements.pinModalSubtitle.textContent = "Masukkan 6-digit PIN sekali lagi";
         return;
       }
 
@@ -5019,7 +5295,7 @@
         state.lockedPinInput = "";
         updatePinDotsUI();
         elements.pinModalTitle.textContent = "Buat PIN Baru";
-        elements.pinModalSubtitle.textContent = "Tentukan 4-digit PIN untuk Folder Terkunci Anda";
+        elements.pinModalSubtitle.textContent = "Tentukan 6-digit PIN untuk Folder Terkunci Anda";
         return;
       }
 
@@ -5031,7 +5307,7 @@
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          showToast("PIN keamanan berhasil dibuat! 🔒");
+          showToast("PIN keamanan berhasil disimpan! 🔒");
           const vRes = await fetch("/api/locked/verify-pin", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -5040,6 +5316,9 @@
           const vData = await vRes.json();
           if (vRes.ok && vData.token) {
             state.lockedToken = vData.token;
+            sessionStorage.setItem("admin_token", vData.token);
+            state.isAdmin = true;
+            updateAdminPill(true);
             elements.pinModalWrapper.classList.add("hidden");
             showLockedView();
           }
@@ -5054,6 +5333,7 @@
       return;
     }
 
+    // Mode 3: Normal Locked Folder Unlock
     try {
       const res = await fetch("/api/locked/verify-pin", {
         method: "POST",
@@ -5063,10 +5343,13 @@
       const data = await res.json();
       if (res.ok && data.token) {
         state.lockedToken = data.token;
+        sessionStorage.setItem("admin_token", data.token);
+        state.isAdmin = true;
+        updateAdminPill(true);
         elements.pinModalWrapper.classList.add("hidden");
         showLockedView();
       } else {
-        elements.pinErrorText.textContent = "PIN salah. Silakan coba lagi.";
+        elements.pinErrorText.textContent = data.detail || "PIN salah. Silakan coba lagi.";
         elements.pinErrorText.classList.remove("hidden");
         state.lockedPinInput = "";
         updatePinDotsUI();
@@ -5619,6 +5902,244 @@
   }
 
   // --------------------------------------------------------------------------
+  // Batch Metadata & Location Editor Controller
+  // --------------------------------------------------------------------------
+  let batchMapInstance = null;
+  let batchMapMarker = null;
+
+  function openBatchMetadataModal() {
+    if (state.selectedPhotos.size === 0) {
+      showToast("Pilih minimal 1 foto untuk diedit.");
+      return;
+    }
+    const count = state.selectedPhotos.size;
+    if (elements.batchCountBadge) {
+      elements.batchCountBadge.textContent = `${count} foto`;
+    }
+
+    // Reset Form
+    if (elements.batchDateModeNone) elements.batchDateModeNone.checked = true;
+    if (elements.batchDateSetGroup) elements.batchDateSetGroup.classList.add("hidden");
+    if (elements.batchDateShiftGroup) elements.batchDateShiftGroup.classList.add("hidden");
+    if (elements.batchNewDatetimeInput) elements.batchNewDatetimeInput.value = "";
+    if (elements.batchShiftHoursInput) elements.batchShiftHoursInput.value = "";
+    if (elements.batchLocationLabelInput) elements.batchLocationLabelInput.value = "";
+    if (elements.batchDescriptionInput) elements.batchDescriptionInput.value = "";
+    clearBatchCoordinates();
+
+    if (elements.batchMetadataModalWrapper) {
+      elements.batchMetadataModalWrapper.classList.remove("hidden");
+    }
+
+    setTimeout(() => {
+      initBatchMapPicker();
+    }, 120);
+  }
+
+  function closeBatchMetadataModal() {
+    if (elements.batchMetadataModalWrapper) {
+      elements.batchMetadataModalWrapper.classList.add("hidden");
+    }
+  }
+
+  function initBatchMapPicker() {
+    if (!elements.batchMetadataMapPicker || typeof L === "undefined") return;
+
+    if (!batchMapInstance) {
+      batchMapInstance = L.map(elements.batchMetadataMapPicker, {
+        zoomControl: true,
+        attributionControl: false,
+      });
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+      }).addTo(batchMapInstance);
+
+      batchMapInstance.on("click", (e) => {
+        setBatchCoordinates(e.latlng.lat, e.latlng.lng, false);
+      });
+    }
+
+    batchMapInstance.invalidateSize();
+    const lat = parseFloat(elements.batchLatitudeInput?.value);
+    const lng = parseFloat(elements.batchLongitudeInput?.value);
+
+    if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+      setBatchCoordinates(lat, lng, true);
+      batchMapInstance.setView([lat, lng], 13);
+    } else {
+      batchMapInstance.setView([-2.5489, 118.0149], 4);
+      if (batchMapMarker) {
+        batchMapInstance.removeLayer(batchMapMarker);
+        batchMapMarker = null;
+      }
+    }
+  }
+
+  function setBatchCoordinates(lat, lng, pan = true) {
+    const cleanLat = Number(lat.toFixed(6));
+    const cleanLng = Number(lng.toFixed(6));
+
+    if (elements.batchLatitudeInput) elements.batchLatitudeInput.value = cleanLat;
+    if (elements.batchLongitudeInput) elements.batchLongitudeInput.value = cleanLng;
+
+    const pinIcon = L.divIcon({
+      className: "custom-pin-marker",
+      html: `<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#ea4335"/><circle cx="12" cy="9" r="2.5" fill="#fff"/></svg>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 30],
+    });
+
+    if (batchMapMarker) {
+      batchMapMarker.setLatLng([cleanLat, cleanLng]);
+    } else if (batchMapInstance) {
+      batchMapMarker = L.marker([cleanLat, cleanLng], { icon: pinIcon, draggable: true }).addTo(batchMapInstance);
+      batchMapMarker.on("dragend", (e) => {
+        const pos = e.target.getLatLng();
+        setBatchCoordinates(pos.lat, pos.lng, false);
+      });
+    }
+
+    if (pan && batchMapInstance) {
+      batchMapInstance.panTo([cleanLat, cleanLng]);
+    }
+  }
+
+  function clearBatchCoordinates() {
+    if (elements.batchLatitudeInput) elements.batchLatitudeInput.value = "";
+    if (elements.batchLongitudeInput) elements.batchLongitudeInput.value = "";
+    if (batchMapMarker && batchMapInstance) {
+      batchMapInstance.removeLayer(batchMapMarker);
+      batchMapMarker = null;
+    }
+  }
+
+  async function saveBatchMetadataChanges() {
+    if (state.selectedPhotos.size === 0) return;
+
+    const photoIds = Array.from(state.selectedPhotos);
+    const dateMode = document.querySelector('input[name="batchDateMode"]:checked')?.value || "none";
+    const newDatetime = elements.batchNewDatetimeInput?.value?.trim() || null;
+    const shiftHoursStr = elements.batchShiftHoursInput?.value?.trim();
+    const shiftHours = shiftHoursStr ? parseFloat(shiftHoursStr) : null;
+    const labelVal = elements.batchLocationLabelInput?.value?.trim() || null;
+    const latStr = elements.batchLatitudeInput?.value?.trim();
+    const lngStr = elements.batchLongitudeInput?.value?.trim();
+    const latVal = latStr ? parseFloat(latStr) : null;
+    const lngVal = lngStr ? parseFloat(lngStr) : null;
+    const descVal = elements.batchDescriptionInput?.value?.trim() || null;
+
+    const payload = {
+      photo_ids: photoIds,
+    };
+
+    if (dateMode === "set" && newDatetime) {
+      payload.date_mode = "set";
+      payload.new_datetime = newDatetime;
+    } else if (dateMode === "shift" && shiftHours !== null && !isNaN(shiftHours) && shiftHours !== 0) {
+      payload.date_mode = "shift";
+      payload.shift_hours = shiftHours;
+    }
+
+    if (latVal !== null && lngVal !== null && !isNaN(latVal) && !isNaN(lngVal)) {
+      payload.latitude = latVal;
+      payload.longitude = lngVal;
+    }
+    if (labelVal) {
+      payload.location_label = labelVal;
+    }
+    if (descVal) {
+      payload.description = descVal;
+    }
+
+    if (!payload.date_mode && payload.latitude === undefined && !payload.location_label && !payload.description) {
+      showToast("Tidak ada perubahan yang dipilih.");
+      return;
+    }
+
+    if (elements.saveBatchMetadataBtn) {
+      elements.saveBatchMetadataBtn.disabled = true;
+    }
+    if (elements.saveBatchMetadataBtnText) {
+      elements.saveBatchMetadataBtnText.textContent = "Menyimpan...";
+    }
+
+    try {
+      const res = await fetch("/api/photos/batch-metadata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Gagal menerapkan metadata batch.");
+      }
+
+      const data = await res.json();
+      showToast(`Berhasil memperbarui ${data.updated_count || photoIds.length} foto! 🎉`);
+      closeBatchMetadataModal();
+      clearSelection();
+      fetchPhotos(true);
+    } catch (e) {
+      console.error("Batch metadata update error", e);
+      showToast(`Gagal: ${e.message}`);
+    } finally {
+      if (elements.saveBatchMetadataBtn) {
+        elements.saveBatchMetadataBtn.disabled = false;
+      }
+      if (elements.saveBatchMetadataBtnText) {
+        elements.saveBatchMetadataBtnText.textContent = "Terapkan Perubahan";
+      }
+    }
+  }
+
+  function initBatchMetadataEditor() {
+    if (elements.batchEditMetadataBtn) {
+      elements.batchEditMetadataBtn.addEventListener("click", openBatchMetadataModal);
+    }
+    if (elements.batchMetadataCloseBtn) {
+      elements.batchMetadataCloseBtn.addEventListener("click", closeBatchMetadataModal);
+    }
+    if (elements.cancelBatchMetadataBtn) {
+      elements.cancelBatchMetadataBtn.addEventListener("click", closeBatchMetadataModal);
+    }
+    if (elements.batchMetadataModalBackdrop) {
+      elements.batchMetadataModalBackdrop.addEventListener("click", closeBatchMetadataModal);
+    }
+    if (elements.batchClearPinBtn) {
+      elements.batchClearPinBtn.addEventListener("click", clearBatchCoordinates);
+    }
+    if (elements.saveBatchMetadataBtn) {
+      elements.saveBatchMetadataBtn.addEventListener("click", saveBatchMetadataChanges);
+    }
+
+    // Radio modes for date
+    const dateRadios = document.querySelectorAll('input[name="batchDateMode"]');
+    dateRadios.forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        const mode = e.target.value;
+        if (elements.batchDateSetGroup) {
+          elements.batchDateSetGroup.classList.toggle("hidden", mode !== "set");
+        }
+        if (elements.batchDateShiftGroup) {
+          elements.batchDateShiftGroup.classList.toggle("hidden", mode !== "shift");
+        }
+      });
+    });
+
+    // Preset shift chips
+    document.querySelectorAll(".shift-presets .btn-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const shift = chip.dataset.shift;
+        if (elements.batchShiftHoursInput && shift) {
+          elements.batchShiftHoursInput.value = shift;
+        }
+      });
+    });
+  }
+
+  // --------------------------------------------------------------------------
   // Mobile Bottom Navigation Controller
   // --------------------------------------------------------------------------
   function setMobileNavActive(activeId) {
@@ -5654,6 +6175,12 @@
     if (elements.tripsContainer && !elements.tripsContainer.classList.contains("hidden")) {
       hideTripsView();
     }
+    if (elements.albumContainer && !elements.albumContainer.classList.contains("hidden")) {
+      hideAlbumView();
+    }
+    if (elements.peopleContainer && !elements.peopleContainer.classList.contains("hidden")) {
+      hidePeopleView();
+    }
     if (state.activeView === "trash") {
       state.activeView = "timeline";
       if (elements.trashBanner) elements.trashBanner.classList.add("hidden");
@@ -5668,6 +6195,7 @@
       elements.mobileNavPhotos.addEventListener("click", () => {
         setMobileNavActive("mobileNavPhotos");
         exitSecondaryViews();
+        hideAlbumView();
         state.currentCategory = "all";
         state.tripFilter = null;
         state.searchQuery = "";
@@ -5711,12 +6239,13 @@
     if (elements.mobileNavAlbums) {
       elements.mobileNavAlbums.addEventListener("click", () => {
         setMobileNavActive("mobileNavAlbums");
-        if (elements.albumSelect) {
-          elements.albumSelect.focus();
-          elements.albumSelect.click();
-        } else {
-          showToast("Koleksi Album: Pilih album pada filter di atas.");
-        }
+        exitSecondaryViews();
+        state.currentCategory = "albums";
+        document.querySelectorAll(".category-chip").forEach((c) => {
+          c.classList.toggle("active", c.dataset.category === "albums");
+        });
+        showAlbumList();
+        window.scrollTo({ top: 0, behavior: "smooth" });
       });
     }
 
@@ -7509,6 +8038,440 @@
         fetchPhotos(true);
       });
     }
+  }
+
+  // ==============================================================================
+  // FEATURE 1: SMART CURATED COLLECTIONS LIVE COUNTS
+  // ==============================================================================
+  async function initSmartCollections() {
+    try {
+      const res = await fetch("/api/collections/smart");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.collections) return;
+
+      const items = Array.isArray(data.collections)
+        ? data.collections
+        : Object.entries(data.collections).map(([k, v]) => ({ id: k, ...v }));
+
+      items.forEach((item) => {
+        const catId = item.id;
+        const count = item.count || 0;
+        if (catId === "people") {
+          if (elements.peopleBadgeCount && count > 0) {
+            elements.peopleBadgeCount.textContent = count;
+            elements.peopleBadgeCount.classList.remove("hidden");
+          }
+        } else {
+          const chip = document.querySelector(`.chip[data-category="${catId}"]`);
+          if (chip && count > 0) {
+            let badge = chip.querySelector(".trash-badge");
+            if (!badge) {
+              badge = document.createElement("span");
+              badge.className = "trash-badge";
+              chip.appendChild(badge);
+            }
+            badge.textContent = count;
+            badge.classList.remove("hidden");
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("Smart collections fetch error:", e);
+    }
+  }
+
+  // ==============================================================================
+  // FEATURE 2: PEOPLE & FACE CLUSTERING (ALBUM ORANG & WAJAH)
+  // ==============================================================================
+  function showPeopleView() {
+    exitSecondaryViews();
+    if (elements.timelineContainer) elements.timelineContainer.classList.add("hidden");
+    if (elements.timelineScrubber) elements.timelineScrubber.classList.add("hidden");
+    if (elements.memoriesSection) elements.memoriesSection.classList.add("hidden");
+    if (elements.peopleContainer) elements.peopleContainer.classList.remove("hidden");
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    if (elements.peopleChip) elements.peopleChip.classList.add("active");
+    state.activeView = "people";
+    loadPeople();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function hidePeopleView() {
+    if (elements.peopleContainer) elements.peopleContainer.classList.add("hidden");
+    if (elements.timelineContainer) elements.timelineContainer.classList.remove("hidden");
+    if (elements.timelineScrubber) elements.timelineScrubber.classList.remove("hidden");
+    if (elements.memoriesSection) elements.memoriesSection.classList.remove("hidden");
+    state.activeView = "timeline";
+  }
+
+  async function loadPeople() {
+    if (!elements.peopleGrid) return;
+    elements.peopleGrid.innerHTML = '<div class="spinner-small" style="margin: 40px auto; grid-column: 1 / -1;"></div>';
+    try {
+      const res = await fetch("/api/people");
+      if (!res.ok) throw new Error("Gagal memuat orang");
+      const data = await res.json();
+      const people = data.people || [];
+
+      if (elements.peopleCountBadge) {
+        elements.peopleCountBadge.textContent = `${people.length} orang terdeteksi`;
+      }
+      if (elements.peopleBadgeCount) {
+        elements.peopleBadgeCount.textContent = people.length;
+        elements.peopleBadgeCount.classList.remove("hidden");
+      }
+
+      if (people.length === 0) {
+        elements.peopleGrid.innerHTML = "";
+        if (elements.peopleEmptyState) elements.peopleEmptyState.classList.remove("hidden");
+        return;
+      }
+
+      if (elements.peopleEmptyState) elements.peopleEmptyState.classList.add("hidden");
+      elements.peopleGrid.innerHTML = "";
+
+      people.forEach((p) => {
+        const card = document.createElement("div");
+        card.className = "person-card";
+        card.title = `Lihat ${p.count} foto memuat ${p.name}`;
+
+        const avatarWrap = document.createElement("div");
+        avatarWrap.className = "person-avatar-wrap";
+
+        if (p.cover_photo_id) {
+          const img = document.createElement("img");
+          img.className = "person-avatar-img";
+          img.src = `/api/thumbnails/${p.cover_photo_id}`;
+          img.loading = "lazy";
+          img.alt = p.name;
+          img.onerror = () => {
+            avatarWrap.innerHTML = `<div class="person-avatar-placeholder">${p.name.charAt(0).toUpperCase()}</div>`;
+          };
+          avatarWrap.appendChild(img);
+        } else {
+          avatarWrap.innerHTML = `<div class="person-avatar-placeholder">${p.name.charAt(0).toUpperCase()}</div>`;
+        }
+
+        const info = document.createElement("div");
+        info.className = "person-info";
+
+        const nameRow = document.createElement("div");
+        nameRow.className = "person-name-row";
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "person-name";
+        nameSpan.textContent = p.name;
+
+        const renameBtn = document.createElement("button");
+        renameBtn.type = "button";
+        renameBtn.className = "person-rename-btn";
+        renameBtn.title = `Ubah nama "${p.name}"`;
+        renameBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
+
+        renameBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const newName = prompt(`Ubah nama untuk "${p.name}":`, p.name);
+          if (!newName || newName.trim() === "" || newName.trim() === p.name) return;
+          try {
+            const renameRes = await fetch("/api/people/rename", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ old_name: p.name, new_name: newName.trim() })
+            });
+            const renameData = await renameRes.json();
+            if (renameRes.ok && renameData.success) {
+              showToast(`Nama berhasil diubah ke "${newName.trim()}" (${renameData.updated_count} foto diupdate)`);
+              loadPeople();
+            } else {
+              showToast(renameData.detail || "Gagal mengubah nama");
+            }
+          } catch (err) {
+            showToast("Gagal memperbarui nama: " + err.message);
+          }
+        });
+
+        nameRow.appendChild(nameSpan);
+        nameRow.appendChild(renameBtn);
+
+        const countSpan = document.createElement("span");
+        countSpan.className = "person-count";
+        countSpan.textContent = `${p.count} foto`;
+
+        info.appendChild(nameRow);
+        info.appendChild(countSpan);
+
+        card.appendChild(avatarWrap);
+        card.appendChild(info);
+
+        card.addEventListener("click", () => {
+          hidePeopleView();
+          state.searchQuery = p.name;
+          if (elements.searchInput) elements.searchInput.value = p.name;
+          if (elements.filterBanner) {
+            elements.filterBanner.classList.remove("hidden");
+            if (elements.filterDesc) elements.filterDesc.textContent = `Foto dengan orang: "${p.name}"`;
+          }
+          fetchPhotos(true);
+        });
+
+        elements.peopleGrid.appendChild(card);
+      });
+    } catch (err) {
+      console.error("Error loading people:", err);
+      if (elements.peopleGrid) {
+        elements.peopleGrid.innerHTML = `<div class="error-msg" style="grid-column: 1 / -1; text-align: center; padding: 20px;">Gagal memuat album orang: ${err.message}</div>`;
+      }
+    }
+  }
+
+  function initPeopleCluster() {
+    if (elements.peopleChip) {
+      elements.peopleChip.addEventListener("click", () => {
+        showPeopleView();
+      });
+    }
+    if (elements.peopleBackBtn) {
+      elements.peopleBackBtn.addEventListener("click", () => {
+        hidePeopleView();
+        const allChip = document.querySelector('.chip[data-category="all"]');
+        if (allChip) allChip.click();
+      });
+    }
+  }
+
+  // ==============================================================================
+  // FEATURE 3: PROGRESSIVE LOW-LATENCY MEDIA PRELOADER
+  // ==============================================================================
+  function initProgressivePreloader() {
+    let preloadTimeout = null;
+    window.addEventListener("scroll", () => {
+      clearTimeout(preloadTimeout);
+      preloadTimeout = setTimeout(() => {
+        if (window.requestIdleCallback) {
+          window.requestIdleCallback(() => runPreloadVisible());
+        } else {
+          setTimeout(runPreloadVisible, 50);
+        }
+      }, 250);
+    }, { passive: true });
+
+    function runPreloadVisible() {
+      const tiles = document.querySelectorAll(".photo-tile[data-id]");
+      if (!tiles.length) return;
+      const viewportBottom = window.innerHeight + 400;
+      let lastVisibleIndex = -1;
+      for (let i = 0; i < tiles.length; i++) {
+        const rect = tiles[i].getBoundingClientRect();
+        if (rect.top < viewportBottom && rect.bottom > -100) {
+          lastVisibleIndex = i;
+        }
+      }
+      if (lastVisibleIndex !== -1) {
+        const nextBatch = Array.from(tiles).slice(lastVisibleIndex + 1, lastVisibleIndex + 16);
+        nextBatch.forEach((tile) => {
+          const id = tile.dataset.id;
+          if (id) {
+            const img = new Image();
+            img.src = `/api/thumbnails/${id}`;
+          }
+        });
+      }
+    }
+  }
+
+  // ==============================================================================
+  // FEATURE 4: CINEMATIC HIGHLIGHT REEL PLAYER (AUTO-STORY KEN BURNS)
+  // ==============================================================================
+  let highlightSlides = [];
+  let currentHighlightIndex = 0;
+  let highlightTimer = null;
+  let isHighlightPaused = false;
+  const HIGHLIGHT_DURATION = 6000; // 6 seconds per photo
+
+  async function openHighlightReel() {
+    if (!elements.highlightReelModalWrapper) return;
+    try {
+      showToast("Menyiapkan Sorotan Kenangan...", 2000);
+      const res = await fetch("/api/memories/highlight-reel");
+      if (!res.ok) throw new Error("Gagal mengambil foto sorotan");
+      const data = await res.json();
+      highlightSlides = data.highlights || data.photos || [];
+
+      if (!highlightSlides.length) {
+        showToast("Tidak ada foto yang cukup untuk membuat sorotan kenangan.");
+        return;
+      }
+
+      currentHighlightIndex = 0;
+      isHighlightPaused = false;
+      elements.highlightReelModalWrapper.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+      renderHighlightSlide(0);
+      startHighlightTimer();
+    } catch (e) {
+      console.error("Highlight reel error:", e);
+      showToast("Gagal memutar sorotan: " + e.message);
+    }
+  }
+
+  function closeHighlightReel() {
+    if (!elements.highlightReelModalWrapper) return;
+    clearTimeout(highlightTimer);
+    elements.highlightReelModalWrapper.classList.add("hidden");
+    document.body.style.overflow = "";
+    if (elements.highlightMediaContainer) elements.highlightMediaContainer.innerHTML = "";
+    if (elements.highlightProgressFill) elements.highlightProgressFill.style.width = "0%";
+  }
+
+  function renderHighlightSlide(index) {
+    if (index < 0 || index >= highlightSlides.length) {
+      closeHighlightReel();
+      return;
+    }
+    currentHighlightIndex = index;
+    const item = highlightSlides[index];
+
+    const progressPct = (index / highlightSlides.length) * 100;
+    if (elements.highlightProgressFill) {
+      elements.highlightProgressFill.style.width = `${progressPct}%`;
+    }
+
+    if (elements.highlightMediaContainer) {
+      elements.highlightMediaContainer.innerHTML = "";
+      const img = document.createElement("img");
+      img.className = `highlight-slide-img active ${index % 2 === 1 ? "alt-anim" : ""}`;
+      img.src = `/api/media/${item.id}`;
+      img.alt = item.filename;
+      elements.highlightMediaContainer.appendChild(img);
+    }
+
+    if (elements.highlightTitle) {
+      elements.highlightTitle.textContent = item.memory_title || "Sorotan Kenangan";
+    }
+    if (elements.highlightSubtitle) {
+      elements.highlightSubtitle.textContent = `${index + 1} dari ${highlightSlides.length} foto`;
+    }
+    if (elements.highlightCaptionDate) {
+      elements.highlightCaptionDate.textContent = item.taken_formatted || item.date_taken || "";
+    }
+    if (elements.highlightCaptionPlace) {
+      const parts = [];
+      if (item.location_name) parts.push(item.location_name);
+      if (item.category && item.category !== "all") parts.push(`Kategori: ${item.category}`);
+      elements.highlightCaptionPlace.textContent = parts.join(" • ");
+    }
+  }
+
+  function startHighlightTimer() {
+    clearTimeout(highlightTimer);
+    if (isHighlightPaused) return;
+
+    const startTime = Date.now();
+    const startPct = (currentHighlightIndex / highlightSlides.length) * 100;
+    const endPct = ((currentHighlightIndex + 1) / highlightSlides.length) * 100;
+
+    const interval = setInterval(() => {
+      if (isHighlightPaused) {
+        clearInterval(interval);
+        return;
+      }
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / HIGHLIGHT_DURATION);
+      const currentPct = startPct + (endPct - startPct) * progress;
+      if (elements.highlightProgressFill) {
+        elements.highlightProgressFill.style.width = `${currentPct}%`;
+      }
+      if (progress >= 1) {
+        clearInterval(interval);
+      }
+    }, 50);
+
+    highlightTimer = setTimeout(() => {
+      clearInterval(interval);
+      if (!isHighlightPaused) {
+        if (currentHighlightIndex + 1 < highlightSlides.length) {
+          renderHighlightSlide(currentHighlightIndex + 1);
+          startHighlightTimer();
+        } else {
+          if (elements.highlightProgressFill) elements.highlightProgressFill.style.width = "100%";
+          setTimeout(closeHighlightReel, 1000);
+        }
+      }
+    }, HIGHLIGHT_DURATION);
+  }
+
+  function toggleHighlightPlayPause() {
+    isHighlightPaused = !isHighlightPaused;
+    if (elements.highlightPlayIcon && elements.highlightPauseIcon) {
+      elements.highlightPlayIcon.classList.toggle("hidden", !isHighlightPaused);
+      elements.highlightPauseIcon.classList.toggle("hidden", isHighlightPaused);
+    }
+    if (isHighlightPaused) {
+      clearTimeout(highlightTimer);
+    } else {
+      startHighlightTimer();
+    }
+  }
+
+  function initHighlightReelPlayer() {
+    if (elements.playHighlightReelBtn) {
+      elements.playHighlightReelBtn.addEventListener("click", openHighlightReel);
+    }
+    if (elements.highlightCloseBtn) {
+      elements.highlightCloseBtn.addEventListener("click", closeHighlightReel);
+    }
+    if (elements.highlightReelBackdrop) {
+      elements.highlightReelBackdrop.addEventListener("click", closeHighlightReel);
+    }
+    if (elements.highlightPlayPauseBtn) {
+      elements.highlightPlayPauseBtn.addEventListener("click", toggleHighlightPlayPause);
+    }
+    if (elements.highlightNextTouchArea) {
+      elements.highlightNextTouchArea.addEventListener("click", () => {
+        clearTimeout(highlightTimer);
+        if (currentHighlightIndex + 1 < highlightSlides.length) {
+          renderHighlightSlide(currentHighlightIndex + 1);
+          startHighlightTimer();
+        } else {
+          closeHighlightReel();
+        }
+      });
+    }
+    if (elements.highlightPrevTouchArea) {
+      elements.highlightPrevTouchArea.addEventListener("click", () => {
+        clearTimeout(highlightTimer);
+        if (currentHighlightIndex > 0) {
+          renderHighlightSlide(currentHighlightIndex - 1);
+          startHighlightTimer();
+        }
+      });
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (elements.highlightReelModalWrapper && !elements.highlightReelModalWrapper.classList.contains("hidden")) {
+        if (e.key === "Escape") {
+          closeHighlightReel();
+        } else if (e.key === " " || e.code === "Space") {
+          e.preventDefault();
+          toggleHighlightPlayPause();
+        } else if (e.key === "ArrowRight") {
+          clearTimeout(highlightTimer);
+          if (currentHighlightIndex + 1 < highlightSlides.length) {
+            renderHighlightSlide(currentHighlightIndex + 1);
+            startHighlightTimer();
+          } else {
+            closeHighlightReel();
+          }
+        } else if (e.key === "ArrowLeft") {
+          clearTimeout(highlightTimer);
+          if (currentHighlightIndex > 0) {
+            renderHighlightSlide(currentHighlightIndex - 1);
+            startHighlightTimer();
+          }
+        }
+      }
+    });
   }
 
   // --- Bootstrap ---
