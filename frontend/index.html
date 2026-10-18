@@ -553,6 +553,12 @@ CHANGELOG:
           <h2>👥 Orang & Wajah (People & Pets)</h2>
           <span class="trash-count-badge" id="peopleCountBadge">Memuat...</span>
         </div>
+        <div class="trash-header-actions">
+          <button class="action-btn" id="detectAllFacesBtn" title="Pindai wajah secara otomatis pada foto arsip menggunakan AI On-Device" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 14px;border-radius:18px;background:rgba(26,115,232,0.12);color:var(--primary,#1a73e8);border:1px solid rgba(26,115,232,0.3);cursor:pointer;font-weight:500;">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+            <span>Pindai Wajah Baru</span>
+          </button>
+        </div>
       </div>
 
       <div class="people-notice-card">
@@ -1796,6 +1802,7 @@ CHANGELOG:
       <div class="editor-viewport">
         <div class="editor-canvas-wrap" id="editorCanvasWrap">
           <img id="editorPreviewImg" class="editor-preview-img" src="" alt="Editor Preview" />
+          <canvas id="editorEraserCanvas" class="editor-eraser-canvas hidden"></canvas>
         </div>
       </div>
 
@@ -1803,6 +1810,7 @@ CHANGELOG:
         <div class="editor-tabs">
           <button class="editor-tab active" data-tab="tune" id="tabTuneBtn">🎨 Penyesuaian</button>
           <button class="editor-tab" data-tab="transform" id="tabTransformBtn">📐 Pangkas & Putar</button>
+          <button class="editor-tab" data-tab="eraser" id="tabEraserBtn">✨ Hapus Objek (Magic Eraser)</button>
         </div>
 
         <div class="editor-controls-panel" id="panelTune">
@@ -1840,6 +1848,24 @@ CHANGELOG:
               <span>Balik Horizontal</span>
             </button>
           </div>
+        </div>
+
+        <div class="editor-controls-panel hidden" id="panelEraser">
+          <div class="eraser-toolbar-row">
+            <div class="eraser-slider-group">
+              <span class="eraser-label">Ukuran Kuas: <strong id="valBrushSize">30px</strong></span>
+              <input type="range" min="10" max="90" value="30" id="sliderBrushSize" />
+            </div>
+            <div class="eraser-actions">
+              <button class="editor-action-pill" id="btnEraserClear" title="Bersihkan Goresan Kuas">
+                <span>🔄 Bersihkan Kuas</span>
+              </button>
+              <button class="editor-action-pill primary-pill" id="btnApplyEraser" title="Jalankan AI Inpainting untuk menghapus objek">
+                <span>✨ Hapus Objek Terpilih</span>
+              </button>
+            </div>
+          </div>
+          <p class="eraser-hint">💡 Gosok/warnai objek atau orang yang ingin dihilangkan pada foto, lalu klik "Hapus Objek Terpilih".</p>
         </div>
       </div>
     </div>

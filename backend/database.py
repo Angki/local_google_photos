@@ -366,6 +366,7 @@ def get_photos(
     is_locked: Optional[bool] = None,
     sort_order: str = "desc",
     aspect_ratio: Optional[str] = None,
+    location: Optional[str] = None,
     limit: int = 80,
     offset: int = 0
 ) -> List[Dict[str, Any]]:
@@ -397,6 +398,11 @@ def get_photos(
     if month is not None:
         conditions.append("taken_month = ?")
         params.append(month)
+
+    if location and location.strip():
+        loc_term = f"%{location.strip()}%"
+        conditions.append("(city LIKE ? OR state LIKE ? OR country LIKE ? OR location_label LIKE ? OR file_path LIKE ?)")
+        params.extend([loc_term, loc_term, loc_term, loc_term, loc_term])
 
     if category and category.lower() != "all":
         c_clean = category.lower().strip()
@@ -633,13 +639,22 @@ def get_all_people() -> List[Dict[str, Any]]:
             continue
 
     people_list = []
+    faces_dir = Path(__file__).parent.parent / "thumbnails" / "faces"
     for name, count in counts.most_common():
         cov = covers.get(name, {})
+        cover_id = cov.get("photo_id")
+        face_avatar_url = None
+        if cover_id:
+            crop_cand = faces_dir / f"face_{cover_id}_1.jpg"
+            if crop_cand.is_file():
+                face_avatar_url = f"/api/thumbnails/faces/face_{cover_id}_1.jpg"
+
         people_list.append({
             "name": name,
             "count": count,
-            "cover_photo_id": cov.get("photo_id"),
+            "cover_photo_id": cover_id,
             "thumbnail_path": cov.get("thumbnail_path"),
+            "face_avatar_url": face_avatar_url,
         })
 
     return people_list
@@ -1573,6 +1588,14 @@ def update_photo_ocr(photo_id: int, text: str) -> None:
     with get_db_connection() as conn:
         conn.execute("UPDATE photos SET ocr_text = ? WHERE id = ?", (text, photo_id))
         conn.commit()
+
+
+def update_photo_people(photo_id: int, people: List[str]) -> bool:
+    """Updates detected or assigned people for a photo."""
+    with get_db_connection() as conn:
+        conn.execute("UPDATE photos SET people = ? WHERE id = ?", (json.dumps(people), photo_id))
+        conn.commit()
+    return True
 
 
 def update_photo_metadata(

@@ -75,6 +75,7 @@ from backend.database import (
     has_pin_configured,
     set_pin,
     verify_pin,
+    update_photo_people,
 )
 from backend.deduplicator import compute_quick_file_hash, find_duplicates
 from backend.geo_resolver import backfill_missing_locations, resolve_location
@@ -83,6 +84,8 @@ from backend.motion_photo import detect_motion_photo
 from backend.network_helper import get_network_info
 from backend.ocr_engine import extract_ocr_text, is_ocr_available
 from backend.scanner import LibraryScanner
+from backend.search_parser import parse_compound_query
+from backend.face_detector import detect_and_save_faces_for_photo
 from backend.thumbnail_manager import generate_thumbnail
 
 api_router = APIRouter()
@@ -215,6 +218,7 @@ class SearchResponse(BaseModel):
     query: str
     count: int
     photos: List[Dict[str, Any]]
+    parsed: Optional[Dict[str, Any]] = None
 
 
 class StatsResponse(BaseModel):
@@ -252,6 +256,11 @@ class BatchUpdateMetadataRequest(BaseModel):
     longitude: Optional[float] = Field(None, ge=-180.0, le=180.0, description="GPS Longitude")
     location_label: Optional[str] = Field(None, description="Custom location text or place name")
     description: Optional[str] = Field(None, description="Caption or description of the photos")
+
+
+class InpaintPhotoRequest(BaseModel):
+    mask_data: str = Field(..., description="Base64 encoded PNG mask data URL")
+    save_as_copy: bool = Field(True, description="Save result as new photo copy if True, else overwrite")
 
 
 # ==============================================================================
@@ -937,26 +946,198 @@ def api_edit_photo(photo_id: int, req: EditPhotoRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Editing failed: {str(e)}")
 
 
+@api_router.post("/api/photos/{photo_id}/inpaint", tags=["Media"], summary="Magic Eraser / Inpaint Photo")
+def api_inpaint_photo(photo_id: int, req: InpaintPhotoRequest, request: Request):
+    """
+    Erases unwanted objects from a photo using an interactive painted mask
+    (Fast Harmonic Diffusion / Poisson inpainting via SciPy/NumPy).
+    """
+    require_admin_permission(request)
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo.get("media_type") != "image":
+        raise HTTPException(status_code=400, detail="Only images can be inpainted")
+
+    source_path = Path(photo["file_path"])
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="Original photo file not found on disk")
+
+    import base64
+    from backend.inpainter import inpaint_photo
+
+    try:
+        raw_b64 = req.mask_data
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        mask_bytes = base64.b64decode(raw_b64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid mask data: {e}")
+
+    try:
+        clean_img = inpaint_photo(source_path, mask_bytes)
+
+        if req.save_as_copy:
+            timestamp_suffix = int(time.time())
+            new_filename = f"{source_path.stem}_erased_{timestamp_suffix}{source_path.suffix}"
+            target_path = source_path.parent / new_filename
+            clean_img.save(str(target_path), quality=95)
+
+            new_w, new_h = clean_img.size
+            new_size = target_path.stat().st_size
+
+            new_record = dict(photo)
+            new_record.pop("id", None)
+            new_record["file_path"] = str(target_path.resolve())
+            new_record["filename"] = new_filename
+            new_record["file_size"] = new_size
+            new_record["width"] = new_w
+            new_record["height"] = new_h
+            new_record["is_live_photo"] = 0
+            new_record["motion_video_path"] = None
+
+            new_id = upsert_photo(new_record)
+            if new_id:
+                thumb_res = generate_thumbnail(new_id, str(target_path), "image")
+                if thumb_res:
+                    t_path, tw, th = thumb_res
+                    update_thumbnail_path(new_id, t_path, tw, th)
+                edited_photo = get_photo_by_id(new_id)
+                return {
+                    "status": "success",
+                    "success": True,
+                    "action": "created_copy",
+                    "is_copy": True,
+                    "photo_id": new_id,
+                    "filename": new_filename,
+                    "photo": edited_photo,
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to save inpainted photo to database")
+        else:
+            temp_target = source_path.parent / f".tmp_inp_{source_path.name}"
+            clean_img.save(str(temp_target), quality=95)
+            temp_target.replace(source_path)
+
+            new_w, new_h = clean_img.size
+            new_size = source_path.stat().st_size
+
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE photos SET width = ?, height = ?, file_size = ? WHERE id = ?;",
+                    (new_w, new_h, new_size, photo_id)
+                )
+
+            thumb_res = generate_thumbnail(photo_id, str(source_path), "image")
+            if thumb_res:
+                t_path, tw, th = thumb_res
+                update_thumbnail_path(photo_id, t_path, tw, th)
+
+            edited_photo = get_photo_by_id(photo_id)
+            return {
+                "status": "success",
+                "success": True,
+                "action": "overwritten",
+                "is_copy": False,
+                "photo_id": photo_id,
+                "filename": source_path.name,
+                "photo": edited_photo,
+            }
+    except Exception as e:
+        logger.exception(f"Inpainting failed for photo {photo_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Inpainting failed: {str(e)}")
+
+
 # ==============================================================================
 # AI Semantic Search & Categories
 # ==============================================================================
 
-@api_router.get("/api/search", response_model=SearchResponse, tags=["Search & AI"], summary="Semantic Search")
+@api_router.get("/api/search", response_model=SearchResponse, tags=["Search & AI"], summary="Semantic & Compound NLP Search")
 def search_photos(
     q: str = Query(..., min_length=1),
     limit: int = Query(80, ge=1, le=200),
 ):
     """
-    Performs AI-powered semantic vector search using CLIP embeddings
-    combined with database text and category matching.
+    Performs Compound NLP query decomposition (Entity + Location + Date Range)
+    combined with AI-powered CLIP semantic vector search and structured SQL filters.
     """
     query_text = q.strip()
-    # 1. First attempt CLIP semantic vector search
+    parsed = parse_compound_query(query_text)
+
+    # 1. Compound Query Mode: structured combination of year, month, location, category
+    if parsed.get("is_compound"):
+        year = parsed.get("year")
+        month = parsed.get("month")
+        location = parsed.get("location")
+        category = parsed.get("category")
+        entity = parsed.get("entity_query", "").strip()
+
+        # If a subject entity remains (e.g. "kucing", "sunset", "makanan")
+        if entity:
+            query_vec = ai_engine.encode_text_query(entity)
+            if query_vec is not None:
+                photo_ids, matrix = get_all_embeddings()
+                if len(photo_ids) > 0 and matrix.shape[0] > 0:
+                    scores = np.dot(matrix, query_vec)
+                    ranked_indices = np.argsort(scores)[::-1]
+                    matched_ids = [photo_ids[i] for i in ranked_indices if scores[i] > 0.15]
+                    if matched_ids:
+                        filtered_matches = get_photos(
+                            photo_ids=matched_ids,
+                            year=year,
+                            month=month,
+                            location=location,
+                            category=category,
+                            limit=limit,
+                        )
+                        if filtered_matches:
+                            return {
+                                "mode": "compound_semantic",
+                                "query": query_text,
+                                "count": len(filtered_matches),
+                                "photos": filtered_matches,
+                                "parsed": parsed,
+                            }
+
+            # Fallback with entity keyword + structured criteria
+            keyword_results = get_photos(
+                year=year,
+                month=month,
+                location=location,
+                category=category,
+                search_text=entity,
+                limit=limit,
+            )
+            if keyword_results:
+                return {
+                    "mode": "compound_keyword",
+                    "query": query_text,
+                    "count": len(keyword_results),
+                    "photos": keyword_results,
+                    "parsed": parsed,
+                }
+
+        # If no specific entity keyword remains (e.g. "Foto di Bandung 2024" or "Makanan bulan lalu")
+        structured_results = get_photos(
+            year=year,
+            month=month,
+            location=location,
+            category=category,
+            limit=limit,
+        )
+        return {
+            "mode": "compound_filter",
+            "query": query_text,
+            "count": len(structured_results),
+            "photos": structured_results,
+            "parsed": parsed,
+        }
+
+    # 2. Standard Search Mode: CLIP semantic vector search
     query_vec = ai_engine.encode_text_query(query_text)
     if query_vec is not None:
         photo_ids, matrix = get_all_embeddings()
         if len(photo_ids) > 0 and matrix.shape[0] > 0:
-            # Cosine similarity (both vectors are L2-normalized)
             scores = np.dot(matrix, query_vec)
             ranked_indices = np.argsort(scores)[::-1]
             matched_ids = [
@@ -971,15 +1152,17 @@ def search_photos(
                     "query": query_text,
                     "count": len(ordered_results),
                     "photos": ordered_results,
+                    "parsed": parsed,
                 }
 
-    # 2. Fallback to keyword search across tags, description, filename, category
+    # 3. Fallback to keyword search across tags, description, filename, category
     keyword_results = get_photos(search_text=query_text, limit=limit)
     return {
         "mode": "keyword",
         "query": query_text,
         "count": len(keyword_results),
         "photos": keyword_results,
+        "parsed": parsed,
     }
 
 
@@ -1022,6 +1205,86 @@ def api_rename_person(req: RenamePersonRequest, request: Request):
     require_admin_permission(request)
     updated = rename_person(req.old_name, req.new_name)
     return {"success": True, "updated_photos": updated}
+
+
+@api_router.get("/api/thumbnails/faces/{filename}", tags=["People & Pets"], summary="Get Face Avatar Thumbnail")
+def get_face_thumbnail(filename: str):
+    """Serves cropped face avatar image for People & Pets cards."""
+    face_file = Path(__file__).parent.parent / "thumbnails" / "faces" / Path(filename).name
+    if face_file.is_file():
+        return FileResponse(
+            str(face_file),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+    raise HTTPException(status_code=404, detail="Face thumbnail not found")
+
+
+@api_router.post("/api/photos/{photo_id}/detect-faces", tags=["People & Pets"], summary="Detect Faces on Photo")
+def api_detect_photo_faces(photo_id: int):
+    """Runs lightweight UltraFace detector on a photo, saves face avatar crops, and updates people tags."""
+    photo = get_photo_by_id(photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    file_path = photo.get("file_path")
+    if not file_path or not Path(file_path).exists():
+        raise HTTPException(status_code=404, detail="Photo file not found on disk")
+
+    detected = detect_and_save_faces_for_photo(photo_id, file_path)
+    if detected:
+        existing_people = []
+        if photo.get("people"):
+            try:
+                import ast
+                try:
+                    existing_people = json.loads(photo["people"])
+                except Exception:
+                    existing_people = ast.literal_eval(photo["people"])
+            except Exception:
+                existing_people = []
+
+        new_labels = [f["label"] for f in detected]
+        merged_people = list(dict.fromkeys(existing_people + new_labels))
+        update_photo_people(photo_id, merged_people)
+
+    return {
+        "success": True,
+        "photo_id": photo_id,
+        "face_count": len(detected),
+        "faces": detected,
+    }
+
+
+@api_router.post("/api/people/detect-all", tags=["People & Pets"], summary="Detect Faces for Untagged Photos")
+async def api_detect_all_faces(limit: int = Query(50, ge=1, le=200)):
+    """Batch scans untagged photos in the archive to detect faces automatically."""
+    with get_db_connection() as conn:
+        rows = conn.execute("""
+            SELECT id, file_path FROM photos
+            WHERE deleted = 0 AND media_type = 'image'
+              AND (people IS NULL OR people = '[]' OR people = '')
+            ORDER BY id DESC LIMIT ?
+        """, (limit,)).fetchall()
+
+    processed = 0
+    faces_found = 0
+    for row in rows:
+        pid = row["id"]
+        fpath = row["file_path"]
+        if fpath and Path(fpath).exists():
+            faces = detect_and_save_faces_for_photo(pid, fpath)
+            if faces:
+                labels = [f["label"] for f in faces]
+                update_photo_people(pid, labels)
+                faces_found += len(faces)
+            processed += 1
+
+    return {
+        "success": True,
+        "scanned_photos": processed,
+        "faces_detected": faces_found,
+    }
 
 
 @api_router.get("/api/memories/highlight-reel", tags=["Memories"], summary="Auto Highlight Reel")
@@ -1544,6 +1807,17 @@ async def api_upload_media(
             thumb_rel, w, h = generate_thumbnail(photo_id, str(cand_path.resolve()), media_type=media_type)
             if thumb_rel:
                 update_thumbnail_path(photo_id, thumb_rel, width=w, height=h)
+
+            # Auto-detect faces on mobile upload when no metadata companion JSON exists
+            if not meta.get("people") and media_type == "image":
+                try:
+                    detected_faces = detect_and_save_faces_for_photo(photo_id, str(cand_path.resolve()))
+                    if detected_faces:
+                        face_labels = [f["label"] for f in detected_faces]
+                        update_photo_people(photo_id, face_labels)
+                        logger.info(f"Auto-detected {len(face_labels)} face(s) for uploaded photo {photo_id}")
+                except Exception as fe:
+                    logger.debug(f"Auto-detect face on upload skipped: {fe}")
 
             uploaded_item = {
                 "id": photo_id,

@@ -2923,6 +2923,7 @@ body.is-selecting .photo-tile .select-overlay,
 }
 
 .editor-canvas-wrap {
+  position: relative;
   max-width: 100%;
   max-height: 100%;
   display: flex;
@@ -2937,6 +2938,61 @@ body.is-selecting .photo-tile .select-overlay,
   border-radius: 4px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
   transition: filter 0.08s ease, transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+  display: block;
+}
+
+.editor-eraser-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: crosshair;
+  touch-action: none;
+  z-index: 5;
+  border-radius: 4px;
+}
+
+.eraser-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+
+.eraser-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #e8eaed;
+}
+
+.eraser-slider-group input[type="range"] {
+  width: 130px;
+  cursor: pointer;
+}
+
+.eraser-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eraser-hint {
+  font-size: 12px;
+  color: #9aa0a6;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.primary-pill {
+  background: var(--primary, #1a73e8) !important;
+  color: #ffffff !important;
+  font-weight: 500;
+}
+.primary-pill:hover {
+  background: #1765cc !important;
 }
 
 .editor-toolbar {

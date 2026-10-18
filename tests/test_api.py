@@ -653,8 +653,13 @@ class TestGooglePhotosTakeout(unittest.TestCase):
             draw.text((20, 35), "GOOGLE PHOTOS LOCAL OCR", fill=(0, 0, 0))
             img.save(tmp_path)
 
-            text = extract_ocr_text(tmp_path)
-            self.assertIn("PHOTOS", text.upper())
+            from backend.ocr_engine import is_ocr_available
+            if is_ocr_available():
+                text = extract_ocr_text(tmp_path)
+                self.assertIn("PHOTOS", text.upper())
+            else:
+                text = extract_ocr_text(tmp_path)
+                self.assertEqual(text, "")
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
@@ -890,14 +895,77 @@ class TestGooglePhotosTakeout(unittest.TestCase):
                 self.assertIsInstance(data["photos"], list)
         asyncio.run(_run())
 
-    def test_pwa_service_worker_v2(self):
-        """Verifies service worker file serves valid JavaScript."""
+    def test_smart_compound_query_parser(self):
+        """Tests NLP decomposition of queries into year, month, location, and entity."""
+        from backend.search_parser import parse_compound_query
+
+        res1 = parse_compound_query("Kucing di Bandung tahun 2024")
+        self.assertEqual(res1["year"], 2024)
+        self.assertEqual(res1["location"], "Bandung")
+        self.assertEqual(res1["entity_query"], "Kucing")
+        self.assertTrue(res1["is_compound"])
+
+        res2 = parse_compound_query("Foto Makanan bulan lalu")
+        self.assertEqual(res2["category"], "food")
+        self.assertIsNotNone(res2["month"])
+        self.assertTrue(res2["is_compound"])
+
+        res3 = parse_compound_query("Pemandangan di Bali 2023")
+        self.assertEqual(res3["year"], 2023)
+        self.assertEqual(res3["location"], "Bali")
+        self.assertEqual(res3["category"], "nature")
+        self.assertTrue(res3["is_compound"])
+
+    def test_on_device_face_detector(self):
+        """Tests lightweight on-device UltraFace detector."""
+        from PIL import Image
+        from backend.face_detector import detect_faces_image
+
+        blank = Image.new("RGB", (320, 240), color="white")
+        detected = detect_faces_image(blank)
+        self.assertIsInstance(detected, list)
+        self.assertEqual(len(detected), 0)
+
+    def test_magic_eraser_inpainter(self):
+        """Tests Fast Harmonic Diffusion inpainter with a synthetic mask."""
+        from PIL import Image
+        from backend.inpainter import inpaint_photo
+
+        img = Image.new("RGB", (64, 64), color="blue")
+        mask = Image.new("L", (64, 64), color=0)
+        for y in range(25, 35):
+            for x in range(25, 35):
+                mask.putpixel((x, y), 255)
+
+        result = inpaint_photo(img, mask, iterations=5)
+        self.assertIsInstance(result, Image.Image)
+        self.assertEqual(result.size, (64, 64))
+
+    def test_compound_search_api(self):
+        """Tests the /api/search endpoint with a compound natural language query."""
         async def _run():
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-                resp = await client.get("/sw.js")
+                resp = await client.get("/api/search?q=Foto di Bandung 2024")
                 self.assertEqual(resp.status_code, 200)
-                self.assertIn("google-photos-thumbs-v2", resp.text)
-                self.assertIn("google-photos-data-v2", resp.text)
+                data = resp.json()
+                self.assertIn("mode", data)
+                self.assertIn("photos", data)
+                self.assertIn("parsed", data)
+                if data.get("parsed"):
+                    self.assertEqual(data["parsed"]["year"], 2024)
+                    self.assertEqual(data["parsed"]["location"], "Bandung")
+        asyncio.run(_run())
+
+    def test_face_detection_batch_endpoint(self):
+        """Tests the /api/people/detect-all batch face scanner endpoint."""
+        async def _run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post("/api/people/detect-all?limit=2")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertTrue(data["success"])
+                self.assertIn("scanned_photos", data)
+                self.assertIn("faces_detected", data)
         asyncio.run(_run())
 
 

@@ -325,6 +325,14 @@
     valWarmth: document.getElementById("valWarmth"),
     btnRotate90: document.getElementById("btnRotate90"),
     btnFlipH: document.getElementById("btnFlipH"),
+    tabEraserBtn: document.getElementById("tabEraserBtn"),
+    panelEraser: document.getElementById("panelEraser"),
+    editorEraserCanvas: document.getElementById("editorEraserCanvas"),
+    sliderBrushSize: document.getElementById("sliderBrushSize"),
+    valBrushSize: document.getElementById("valBrushSize"),
+    btnEraserClear: document.getElementById("btnEraserClear"),
+    btnApplyEraser: document.getElementById("btnApplyEraser"),
+    detectAllFacesBtn: document.getElementById("detectAllFacesBtn"),
 
     // LAN & Mobile QR Code Access (Phase 9)
     lanShareBtn: document.getElementById("lanShareBtn"),
@@ -659,6 +667,8 @@
     initPeopleCluster();
     initHighlightReelPlayer();
     initProgressivePreloader();
+    initEraserCanvas();
+    window.addEventListener("resize", syncEraserCanvasSize);
     fetchPhotos(true);
   }
 
@@ -1281,8 +1291,16 @@
 
       if (data.mode === "semantic") {
         elements.searchBadge.innerHTML = `<span class="sparkle-icon">✨</span> AI Match`;
+      } else if (data.mode && data.mode.startsWith("compound")) {
+        elements.searchBadge.innerHTML = `<span class="sparkle-icon">🎯</span> Smart Compound`;
       } else {
         elements.searchBadge.innerHTML = `<span class="sparkle-icon">✨</span> AI Search`;
+      }
+
+      if (data.parsed && data.parsed.explanation && data.parsed.explanation.length > 0) {
+        elements.filterBanner.classList.remove("hidden");
+        const badgesHtml = data.parsed.explanation.map(exp => `<span class="compound-chip" style="display:inline-block;padding:2px 8px;margin:2px 4px;background:rgba(26,115,232,0.15);color:var(--primary,#1a73e8);border-radius:12px;font-size:12px;font-weight:500;">✓ ${exp}</span>`).join("");
+        elements.filterDesc.innerHTML = `Pencarian "<strong>${state.searchQuery}</strong>" &bull; Filter Terdeteksi: ${badgesHtml}`;
       }
 
       if (reset) {
@@ -1352,6 +1370,63 @@
           elements.timelineSections.appendChild(createSectionElement(group));
         }
       });
+    }
+
+    // Activate virtual scrolling / DOM recycling (200px buffer)
+    setupTimelineVirtualRecycler();
+  }
+
+  let timelineVirtualObserver = null;
+
+  function setupTimelineVirtualRecycler() {
+    if (typeof IntersectionObserver === "undefined") return;
+
+    if (!timelineVirtualObserver) {
+      timelineVirtualObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            const section = entry.target;
+            const imgs = section.querySelectorAll(".photo-thumb");
+
+            if (entry.isIntersecting) {
+              // Visible in viewport (+ 200px buffer): hydrate real images
+              if (section.dataset.virtualized === "true") {
+                delete section.dataset.virtualized;
+                imgs.forEach((img) => {
+                  const targetSrc = img.dataset.virtualSrc;
+                  if (targetSrc && img.src !== targetSrc) {
+                    img.src = targetSrc;
+                  }
+                });
+              }
+            } else {
+              // Outside viewport (> 200px buffer): recycle DOM image bitmaps to save memory
+              const h = section.offsetHeight;
+              if (h > 80) {
+                section.style.minHeight = `${h}px`;
+                section.dataset.virtualized = "true";
+                imgs.forEach((img) => {
+                  if (img.src && !img.src.startsWith("data:image/svg+xml")) {
+                    img.dataset.virtualSrc = img.src;
+                    // Unload decoded bitmap to free RAM/VRAM
+                    img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E";
+                  }
+                });
+              }
+            }
+          });
+        },
+        {
+          root: null,
+          rootMargin: "200px 0px 200px 0px", // 200px buffer top & bottom
+          threshold: 0,
+        }
+      );
+    }
+
+    if (elements.timelineSections) {
+      const sections = elements.timelineSections.querySelectorAll(".timeline-section");
+      sections.forEach((sec) => timelineVirtualObserver.observe(sec));
     }
   }
 
@@ -1424,9 +1499,12 @@
     img.className = "photo-thumb loading";
     img.alt = photo.description || photo.filename;
     img.loading = "lazy";
+    img.decoding = "async";
 
-    // Set thumbnail URL
-    img.src = `/api/thumbnails/${photo.id}`;
+    // Set thumbnail URL & virtual source for DOM recycling
+    const thumbUrl = `/api/thumbnails/${photo.id}`;
+    img.dataset.virtualSrc = thumbUrl;
+    img.src = thumbUrl;
     img.onload = () => {
       img.classList.remove("loading");
       img.classList.add("loaded");
@@ -2606,6 +2684,24 @@
     }
     if (elements.tabTransformBtn) {
       elements.tabTransformBtn.addEventListener("click", () => switchEditorTab("transform"));
+    }
+    if (elements.tabEraserBtn) {
+      elements.tabEraserBtn.addEventListener("click", () => switchEditorTab("eraser"));
+    }
+    if (elements.sliderBrushSize) {
+      elements.sliderBrushSize.addEventListener("input", (e) => {
+        brushSize = parseInt(e.target.value) || 30;
+        if (elements.valBrushSize) elements.valBrushSize.textContent = `${brushSize}px`;
+      });
+    }
+    if (elements.btnEraserClear) {
+      elements.btnEraserClear.addEventListener("click", clearEraserMask);
+    }
+    if (elements.btnApplyEraser) {
+      elements.btnApplyEraser.addEventListener("click", applyMagicEraser);
+    }
+    if (elements.detectAllFacesBtn) {
+      elements.detectAllFacesBtn.addEventListener("click", triggerDetectAllFaces);
     }
     if (elements.editorAutoEnhanceBtn) {
       elements.editorAutoEnhanceBtn.addEventListener("click", toggleEditorAutoEnhance);
@@ -4350,9 +4446,13 @@
     }
 
     resetEditorState();
+    clearEraserMask();
 
     if (elements.editorPreviewImg) {
       elements.editorPreviewImg.src = `/api/media/${targetPhoto.id}`;
+      elements.editorPreviewImg.onload = () => {
+        syncEraserCanvasSize();
+      };
     }
 
     switchEditorTab("tune");
@@ -4366,20 +4466,224 @@
     if (elements.editorModalWrapper) {
       elements.editorModalWrapper.classList.add("hidden");
     }
+    clearEraserMask();
     state.editingPhoto = null;
+  }
+
+  let isErasing = false;
+  let brushSize = 30;
+  let eraserCtx = null;
+
+  function initEraserCanvas() {
+    if (!elements.editorEraserCanvas) return;
+    eraserCtx = elements.editorEraserCanvas.getContext("2d");
+
+    function getCanvasCoords(e) {
+      const rect = elements.editorEraserCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const scaleX = elements.editorEraserCanvas.width / rect.width;
+      const scaleY = elements.editorEraserCanvas.height / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    function startStroke(e) {
+      isErasing = true;
+      const { x, y } = getCanvasCoords(e);
+      const rect = elements.editorEraserCanvas.getBoundingClientRect();
+      const currentScale = elements.editorEraserCanvas.width / (rect.width || 1);
+      const currentLineWidth = brushSize * currentScale;
+
+      eraserCtx.beginPath();
+      eraserCtx.moveTo(x, y);
+      eraserCtx.lineCap = "round";
+      eraserCtx.lineJoin = "round";
+      eraserCtx.lineWidth = currentLineWidth;
+      eraserCtx.strokeStyle = "rgba(255, 64, 129, 0.55)";
+      eraserCtx.fillStyle = "rgba(255, 64, 129, 0.55)";
+      eraserCtx.arc(x, y, currentLineWidth / 2, 0, Math.PI * 2);
+      eraserCtx.fill();
+      eraserCtx.beginPath();
+      eraserCtx.moveTo(x, y);
+      e.preventDefault();
+    }
+
+    function drawStroke(e) {
+      if (!isErasing) return;
+      const { x, y } = getCanvasCoords(e);
+      eraserCtx.lineTo(x, y);
+      eraserCtx.stroke();
+      e.preventDefault();
+    }
+
+    function endStroke(e) {
+      if (!isErasing) return;
+      isErasing = false;
+      eraserCtx.closePath();
+    }
+
+    elements.editorEraserCanvas.addEventListener("mousedown", startStroke);
+    elements.editorEraserCanvas.addEventListener("mousemove", drawStroke);
+    window.addEventListener("mouseup", endStroke);
+
+    elements.editorEraserCanvas.addEventListener("touchstart", startStroke, { passive: false });
+    elements.editorEraserCanvas.addEventListener("touchmove", drawStroke, { passive: false });
+    elements.editorEraserCanvas.addEventListener("touchend", endStroke);
+  }
+
+  function syncEraserCanvasSize() {
+    if (!elements.editorPreviewImg || !elements.editorEraserCanvas) return;
+    const img = elements.editorPreviewImg;
+    const w = img.clientWidth;
+    const h = img.clientHeight;
+    if (w > 0 && h > 0) {
+      elements.editorEraserCanvas.style.width = `${w}px`;
+      elements.editorEraserCanvas.style.height = `${h}px`;
+      elements.editorEraserCanvas.style.left = `${img.offsetLeft}px`;
+      elements.editorEraserCanvas.style.top = `${img.offsetTop}px`;
+      elements.editorEraserCanvas.width = img.naturalWidth || w;
+      elements.editorEraserCanvas.height = img.naturalHeight || h;
+    }
+  }
+
+  function clearEraserMask() {
+    if (eraserCtx && elements.editorEraserCanvas) {
+      eraserCtx.clearRect(0, 0, elements.editorEraserCanvas.width, elements.editorEraserCanvas.height);
+    }
+  }
+
+  async function applyMagicEraser() {
+    if (!state.editingPhoto || !elements.editorEraserCanvas || !eraserCtx) return;
+
+    // Check if anything was painted
+    const maskData = eraserCtx.getImageData(0, 0, elements.editorEraserCanvas.width, elements.editorEraserCanvas.height);
+    let hasDrawn = false;
+    for (let i = 3; i < maskData.data.length; i += 4) {
+      if (maskData.data[i] > 20) {
+        hasDrawn = true;
+        break;
+      }
+    }
+
+    if (!hasDrawn) {
+      showToast("Gosok objek atau orang yang ingin dihilangkan pada foto terlebih dahulu.");
+      return;
+    }
+
+    // Create binary mask for backend (white on black)
+    const offCanvas = document.createElement("canvas");
+    offCanvas.width = elements.editorEraserCanvas.width;
+    offCanvas.height = elements.editorEraserCanvas.height;
+    const offCtx = offCanvas.getContext("2d");
+    offCtx.fillStyle = "#000000";
+    offCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+    offCtx.drawImage(elements.editorEraserCanvas, 0, 0);
+
+    const offData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+    for (let i = 0; i < offData.data.length; i += 4) {
+      if (offData.data[i + 3] > 10) {
+        offData.data[i] = 255;
+        offData.data[i + 1] = 255;
+        offData.data[i + 2] = 255;
+        offData.data[i + 3] = 255;
+      } else {
+        offData.data[i] = 0;
+        offData.data[i + 1] = 0;
+        offData.data[i + 2] = 0;
+        offData.data[i + 3] = 255;
+      }
+    }
+    offCtx.putImageData(offData, 0, 0);
+    const maskBase64 = offCanvas.toDataURL("image/png");
+
+    try {
+      showToast("✨ Menghapus objek dengan AI Magic Eraser...");
+      if (elements.btnApplyEraser) elements.btnApplyEraser.disabled = true;
+
+      const res = await fetch(`/api/photos/${state.editingPhoto.id}/inpaint`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mask_data: maskBase64,
+          save_as_copy: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("✨ Objek berhasil dihapus!");
+        clearEraserMask();
+        if (data.photo) {
+          state.editingPhoto = data.photo;
+          elements.editorPreviewImg.src = `/api/media/${data.photo.id}?t=${Date.now()}`;
+          elements.editorPreviewImg.onload = () => {
+            syncEraserCanvasSize();
+          };
+        }
+        loadPhotos(true);
+      } else {
+        showToast("Gagal menghapus objek: " + (data.detail || "Error"));
+      }
+    } catch (err) {
+      showToast("Error Magic Eraser: " + err.message);
+    } finally {
+      if (elements.btnApplyEraser) elements.btnApplyEraser.disabled = false;
+    }
+  }
+
+  async function triggerDetectAllFaces() {
+    if (!elements.detectAllFacesBtn) return;
+    try {
+      elements.detectAllFacesBtn.disabled = true;
+      elements.detectAllFacesBtn.innerHTML = `<span>⏳ Memindai...</span>`;
+      showToast("🤖 Memindai wajah baru dengan AI On-Device...");
+      const res = await fetch("/api/people/detect-all?limit=100", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`✨ Selesai: ${data.scanned_photos} foto dipindai, ${data.faces_detected} wajah ditemukan!`);
+        loadPeople();
+      } else {
+        showToast("Gagal memindai wajah: " + (data.detail || "Error"));
+      }
+    } catch (err) {
+      showToast("Error deteksi wajah: " + err.message);
+    } finally {
+      elements.detectAllFacesBtn.disabled = false;
+      elements.detectAllFacesBtn.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg><span>Pindai Wajah Baru</span>`;
+    }
   }
 
   function switchEditorTab(tab) {
     if (tab === "tune") {
       if (elements.tabTuneBtn) elements.tabTuneBtn.classList.add("active");
       if (elements.tabTransformBtn) elements.tabTransformBtn.classList.remove("active");
+      if (elements.tabEraserBtn) elements.tabEraserBtn.classList.remove("active");
       if (elements.panelTune) elements.panelTune.classList.remove("hidden");
       if (elements.panelTransform) elements.panelTransform.classList.add("hidden");
-    } else {
+      if (elements.panelEraser) elements.panelEraser.classList.add("hidden");
+      if (elements.editorEraserCanvas) elements.editorEraserCanvas.classList.add("hidden");
+    } else if (tab === "transform") {
       if (elements.tabTransformBtn) elements.tabTransformBtn.classList.add("active");
       if (elements.tabTuneBtn) elements.tabTuneBtn.classList.remove("active");
+      if (elements.tabEraserBtn) elements.tabEraserBtn.classList.remove("active");
       if (elements.panelTransform) elements.panelTransform.classList.remove("hidden");
       if (elements.panelTune) elements.panelTune.classList.add("hidden");
+      if (elements.panelEraser) elements.panelEraser.classList.add("hidden");
+      if (elements.editorEraserCanvas) elements.editorEraserCanvas.classList.add("hidden");
+    } else if (tab === "eraser") {
+      if (elements.tabEraserBtn) elements.tabEraserBtn.classList.add("active");
+      if (elements.tabTuneBtn) elements.tabTuneBtn.classList.remove("active");
+      if (elements.tabTransformBtn) elements.tabTransformBtn.classList.remove("active");
+      if (elements.panelEraser) elements.panelEraser.classList.remove("hidden");
+      if (elements.panelTune) elements.panelTune.classList.add("hidden");
+      if (elements.panelTransform) elements.panelTransform.classList.add("hidden");
+      if (elements.editorEraserCanvas) {
+        elements.editorEraserCanvas.classList.remove("hidden");
+        syncEraserCanvasSize();
+      }
     }
   }
 
